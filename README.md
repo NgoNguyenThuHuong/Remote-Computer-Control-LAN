@@ -1,6 +1,17 @@
 # 🏢 Hệ thống Quản lý và Giám sát Máy tính Phòng ban (Client-Server LAN)
 
-Dự án phát triển bằng **Java (Maven)**, sử dụng **TCP Socket** đa luồng, **SQLite** và giao diện **Java Swing** nhằm quản lý nội bộ trong mạng LAN.
+Ứng dụng quản lý và giám sát máy tính nhân sự từ xa trong mạng LAN nội bộ, phát triển dựa trên mô hình Client-Server sử dụng **Java (Maven)**, **TCP Socket đa luồng**, **SQLite** và giao diện **Java Swing**.
+
+---
+
+## 🎯 Mục tiêu & Tiêu chuẩn Môi trường (Environment Setup)
+
+Để đảm bảo 4 thành viên trong nhóm có thể phối hợp mượt mà, dự án tuân thủ các tiêu chuẩn chung sau:
+
+- **JDK:** Thống nhất cùng một phiên bản Java (JDK 22).
+- **IDE:** Sử dụng chung **Apache NetBeans** (Quản lý dự án dạng Maven).
+- **Cơ sở dữ liệu:** Sử dụng **SQLite + JDBC** (Tự động khởi tạo và cấu hình khi chạy chương trình).
+- **Quy trình Git (Git Workflow):** Phát triển theo nhánh cá nhân (`feature/...`), gộp qua nhánh chung (`dev`) bằng Pull Request trước khi phát hành chính thức.
 
 ---
 
@@ -13,43 +24,10 @@ Dự án phát triển bằng **Java (Maven)**, sử dụng **TCP Socket** đa l
 
 ---
 
-## 📂 Toàn bộ Cấu trúc Thư mục & Khung xương Dự án (Full Package & File Architecture)
+## 📂 Toàn bộ Cấu trúc Thư mục & Khung xương Dự án (Full Package Architecture)
 
-Toàn bộ mã nguồn nằm trong gói gốc `com.mycompany.remoteservercore`:
+Toàn bộ mã nguồn được quy hoạch bên trong gói gốc `com.mycompany.remoteservercore`:
 
 ```text
-src/main/java/com/mycompany/remoteservercore/
-│
-├── core/                        📌 Phụ trách mạng & tiến trình kết nối
-│   ├── MainServer.java                 # Khởi tạo ServerSocket, lắng nghe cổng 9999, quản lý ExecutorService
-│   ├── ClientHandler.java              # Luồng xử lý độc lập cho từng Agent kết nối vào Server
-│   ├── ClientManager.java              # Quản lý danh sách các máy nhân sự online/offline
-│   └── AgentCore.java                  # Tiến trình chạy phía Client (Agent): heartbeat, tự động kết nối lại
-│
-├── model/                       📌 Định nghĩa các đối tượng dữ liệu dùng chung (POJO)
-│   ├── ClientInfo.java                 # Thông tin phần cứng, IP, tên máy, CPU, RAM, OS
-│   ├── MessagePacket.java              # Khuôn mẫu gói tin truyền tải chung qua JSON
-│   ├── User.java                       # Thông tin tài khoản đăng nhập và phân quyền
-│   └── LogEntry.java                   # Cấu trúc lưu vết lịch sử hoạt động phòng ban
-│
-├── protocol/                    📌 Xử lý giao thức truyền tin
-│   ├── PacketRouter.java               # Bộ điều hướng mã lệnh từ gói tin JSON đến các chức năng
-│   └── JsonUtils.java                  # Thư viện hỗ trợ serialize/deserialize JSON
-│
-├── database/                    📌 Quản lý lưu trữ dữ liệu (SQLite + JDBC)
-│   ├── DatabaseManager.java            # Khởi tạo và quản lý kết nối cơ sở dữ liệu SQLite
-│   ├── UserDAO.java                    # Thao tác truy vấn dữ liệu tài khoản và phân quyền
-│   └── LogDAO.java                     # Ghi nhận log và lịch sử hoạt động vào CSDL
-│
-├── ui/                          📌 Giao diện quản trị phía Server (Java Swing)
-│   ├── LoginFrame.java                 # Màn hình đăng nhập hệ thống
-│   ├── DashboardFrame.java             # Màn hình chính quản lý danh sách máy nhân sự
-│   ├── ChatFrame.java                  # Giao diện nhắn tin/chat 2 chiều với nhân sự
-│   ├── ScreenViewFrame.java            # Giao diện xem màn hình máy nhân sự theo thời gian thực
-│   ├── BlockedWebFrame.java            # Giao diện quản lý danh sách website bị chặn
-│   └── LogFrame.java                   # Giao diện xem lịch sử hoạt động và log sự kiện
-│
-└── features/                    📌 Các module tính năng chuyên sâu hệ thống
-    ├── ScreenCapturer.java             # Xử lý chụp ảnh màn hình máy nhân sự
-    ├── WebBlocker.java                 # Áp dụng và quản lý danh sách website bị chặn trên Agent
-    └── SystemControl.java              # Thực thi lệnh điều khiển từ xa (khóa máy, tắt máy, restart)
+
+```
