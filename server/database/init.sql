@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS Users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user'
+);
+
+CREATE TABLE IF NOT EXISTS Clients (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ip_address TEXT NOT NULL,
+    mac_address TEXT NOT NULL UNIQUE,
+    computer_name TEXT,
+    status TEXT NOT NULL DEFAULT 'offline'
+);
+
+CREATE TABLE IF NOT EXISTS Logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id INTEGER,
+    action TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (client_id) REFERENCES Clients(id)
+);
