@@ -141,8 +141,8 @@ public class ClientAgent {
     }
     
     public static void main(String[] args) {
-        // Default to localhost, port 8888 for testing
-        ClientAgent agent = new ClientAgent("127.0.0.1", 8888);
+        // Default to localhost, port 9999 to match MainServer
+        ClientAgent agent = new ClientAgent("127.0.0.1", 9999);
         agent.start();
     }
 }
