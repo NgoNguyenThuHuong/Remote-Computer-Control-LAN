@@ -1,9 +1,13 @@
 package com.mycompany.remoteservercore.core;
 
+import com.mycompany.remoteservercore.database.DatabaseManager;
 import com.mycompany.remoteservercore.model.ClientInfo;
 import com.mycompany.remoteservercore.model.MessagePacket;
 import com.mycompany.remoteservercore.protocol.JsonUtils;
 import com.mycompany.remoteservercore.protocol.PacketRouter;
+import com.mycompany.remoteservercore.ui.LoginFrame;
+
+import javax.swing.*;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -11,10 +15,15 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Server chính quản lý lắng nghe kết nối mạng LAN từ các Client Agent.
- * Chạy ServerSocket đa luồng với ExecutorService Thread Pool và điều phối gói tin qua PacketRouter.
+ * Entry point của Server.
+ * Luồng khởi động:
+ *   1. Khởi tạo DB (tạo bảng, seed tài khoản mặc định admin/user).
+ *   2. Đăng ký các PacketHandler điều hướng gói tin mạng.
+ *   3. Mở LoginFrame trên EDT (Event Dispatch Thread của Swing).
+ *   4. ServerSocket chạy trên thread riêng — lắng nghe kết nối từ các máy Client.
  */
 public class MainServer {
+
     public static final int DEFAULT_PORT = 9999;
     private final int port;
     private final ExecutorService pool;
@@ -45,11 +54,11 @@ public class MainServer {
                     info.setIpAddress(sender.getClientIp());
                 }
                 ClientManager.getInstance().updateClientInfo(info);
-                System.out.println("[MainServer] Da cap nhat ClientInfo: " + info.getHostName() + " (" + info.getIpAddress() + ") - CPU: " + info.getCpuUsage() + "%, RAM: " + info.getFormattedRam());
+                System.out.println("[MainServer] Đã cập nhật ClientInfo: " + info.getHostName() + " (" + info.getIpAddress() + ") - CPU: " + info.getCpuUsage() + "%, RAM: " + info.getFormattedRam());
 
                 // Server gửi phản hồi JSON (ACK) lại cho Client
                 if (sender != null) {
-                    sender.sendPacket(MessagePacket.createAck("SERVER", sender.getClientIp(), "Server da tiep nhan SYS_INFO thanh cong"));
+                    sender.sendPacket(MessagePacket.createAck("SERVER", sender.getClientIp(), "Server đã tiếp nhận SYS_INFO thành công"));
                 }
             }
         });
@@ -67,32 +76,51 @@ public class MainServer {
 
         // 3. Xử lý tin nhắn Chat từ Client
         router.registerHandler(MessagePacket.TYPE_CHAT, (packet, sender) -> {
-            System.out.println("[MainServer - CHAT] Tu [" + packet.getSender() + " (" + (sender != null ? sender.getClientIp() : "") + ")]: " + packet.getPayload());
+            System.out.println("[MainServer - CHAT] Từ [" + packet.getSender() + " (" + (sender != null ? sender.getClientIp() : "") + ")]: " + packet.getPayload());
 
             // Server gửi phản hồi Chat JSON ngược lại cho Client
             if (sender != null) {
-                sender.sendPacket(MessagePacket.createChat("SERVER", sender.getClientIp(), "Server da nhan tin: \"" + packet.getPayload() + "\""));
+                sender.sendPacket(MessagePacket.createChat("SERVER", sender.getClientIp(), "Server đã nhận tin: \"" + packet.getPayload() + "\""));
             }
         });
     }
 
     /**
-     * Khởi động Server lắng nghe kết nối từ các máy nhân sự.
+     * Khởi động ServerSocket lắng nghe kết nối từ các máy nhân sự.
      */
     public void start() {
-        System.out.println("=== HE THONG SERVER QUAN LY PHONG BAN ===");
+        System.out.println("=== HỆ THỐNG SERVER QUẢN LÝ PHÒNG BAN ===");
+
+        // 1. Khởi tạo database: tạo bảng + seed tài khoản mặc định
+        try {
+            DatabaseManager.initialize();
+        } catch (RuntimeException e) {
+            System.err.println("[FATAL] Không thể khởi tạo database: " + e.getMessage());
+        }
+
+        // 2. Mở màn hình đăng nhập trên EDT (bắt buộc với Swing)
+        SwingUtilities.invokeLater(() -> {
+            try {
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            } catch (Exception ignored) {}
+
+            LoginFrame loginFrame = new LoginFrame();
+            loginFrame.setVisible(true);
+        });
+
+        // 3. Khởi động ServerSocket lắng nghe kết nối
         try {
             serverSocket = new ServerSocket(port);
-            System.out.println("[INFO] Server dang KHOI DONG VA LANG NGHE TAI CONG: " + port);
+            System.out.println("[INFO] Server đang KHỞI ĐỘNG VÀ LẮNG NGHE TẠI CỔNG: " + port);
 
             while (running) {
                 Socket clientSocket = serverSocket.accept();
-                System.out.println("[CONNECTED] Phat hien ket noi moi tu IP: " + clientSocket.getInetAddress().getHostAddress());
+                System.out.println("[CONNECTED] Phát hiện kết nối mới từ IP: " + clientSocket.getInetAddress().getHostAddress());
                 pool.execute(new ClientHandler(clientSocket));
             }
         } catch (IOException e) {
             if (running) {
-                System.err.println("[ERROR] Loi khoi dong server Server Socket: " + e.getMessage());
+                System.err.println("[ERROR] Lỗi khởi động ServerSocket: " + e.getMessage());
             }
         } finally {
             stop();
@@ -109,14 +137,19 @@ public class MainServer {
                 serverSocket.close();
             }
         } catch (IOException e) {
-            System.err.println("[ERROR] Loi khi dong ServerSocket: " + e.getMessage());
+            System.err.println("[ERROR] Lỗi khi đóng ServerSocket: " + e.getMessage());
         }
         pool.shutdown();
-        System.out.println("[INFO] Server da dung hoat dong.");
+        DatabaseManager.close();
+        System.out.println("[INFO] Server đã dừng hoạt động.");
     }
 
     public static void main(String[] args) {
         MainServer server = new MainServer();
+
+        // Shutdown hook giải phóng tài nguyên khi tắt JVM
+        Runtime.getRuntime().addShutdownHook(new Thread(server::stop, "ShutdownHook"));
+
         server.start();
     }
 }
