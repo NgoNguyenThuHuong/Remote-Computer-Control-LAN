@@ -1,7 +1,9 @@
 package com.mycompany.remoteservercore.core;
 
 import com.mycompany.remoteservercore.database.DatabaseManager;
+import com.mycompany.remoteservercore.database.LogDAO;
 import com.mycompany.remoteservercore.model.ClientInfo;
+import com.mycompany.remoteservercore.model.LogEntry;
 import com.mycompany.remoteservercore.model.MessagePacket;
 import com.mycompany.remoteservercore.protocol.JsonUtils;
 import com.mycompany.remoteservercore.protocol.PacketRouter;
@@ -17,7 +19,7 @@ import java.util.concurrent.Executors;
 /**
  * Entry point của Server.
  * Luồng khởi động:
- *   1. Khởi tạo DB (tạo bảng, seed tài khoản mặc định admin/user).
+ *   1. Khởi tạo DB (tạo bảng users + logs, seed tài khoản mặc định admin/user).
  *   2. Đăng ký các PacketHandler điều hướng gói tin mạng.
  *   3. Mở LoginFrame trên EDT (Event Dispatch Thread của Swing).
  *   4. ServerSocket chạy trên thread riêng — lắng nghe kết nối từ các máy Client.
@@ -25,6 +27,8 @@ import java.util.concurrent.Executors;
 public class MainServer {
 
     public static final int DEFAULT_PORT = 9999;
+    public static final int PORT = DEFAULT_PORT;
+
     private final int port;
     private final ExecutorService pool;
     private volatile boolean running = true;
@@ -108,9 +112,10 @@ public class MainServer {
     public void start() {
         System.out.println("=== HỆ THỐNG SERVER QUẢN LÝ PHÒNG BAN ===");
 
-        // 1. Khởi tạo database: tạo bảng + seed tài khoản mặc định
+        // 1. Khởi tạo database: tạo bảng users, logs + seed tài khoản mặc định
         try {
             DatabaseManager.initialize();
+            LogDAO.saveLog(new LogEntry("Server", "Login", "Server started on port " + port));
         } catch (RuntimeException e) {
             System.err.println("[FATAL] Không thể khởi tạo database: " + e.getMessage());
         }

@@ -43,6 +43,26 @@ public class ClientManager {
         return INSTANCE;
     }
 
+    public static synchronized void addClient(ClientHandler client) {
+        if (client != null) {
+            getInstance().registerClient(client);
+        }
+    }
+
+    public static synchronized void removeClient(ClientHandler client) {
+        if (client != null) {
+            getInstance().unregisterClient(client);
+        }
+    }
+
+    public static synchronized void broadcast(String message) {
+        for (ClientHandler handler : getInstance().activeHandlers.values()) {
+            if (handler.isRunning()) {
+                handler.sendMessage(message);
+            }
+        }
+    }
+
     /**
      * Đăng ký một Client vừa kết nối thành công.
      */
@@ -68,8 +88,30 @@ public class ClientManager {
     }
 
     /**
-     * Hủy đăng ký Client khi ngắt kết nối.
+     * Hủy đăng ký ClientHandler. Chỉ xóa khi handler hiện tại chính là handler ngắt kết nối.
      */
+    public void unregisterClient(ClientHandler handler) {
+        if (handler == null) {
+            return;
+        }
+        String ip = handler.getClientIp();
+        boolean removed = activeHandlers.remove(ip, handler);
+        if (removed) {
+            ClientInfo info = clientInfoMap.get(ip);
+            if (info != null) {
+                info.setStatus(ClientInfo.STATUS_OFFLINE);
+            }
+            for (ClientEventListener listener : listeners) {
+                try {
+                    listener.onClientDisconnected(ip);
+                } catch (Exception e) {
+                    System.err.println("[ClientManager] Loi callback listener: " + e.getMessage());
+                }
+            }
+            System.out.println("[ClientManager] Da xoa Client khoi danh sach: " + ip + " (Con lai: " + activeHandlers.size() + ")");
+        }
+    }
+
     public void unregisterClient(String clientIp) {
         if (clientIp == null) {
             return;
@@ -79,7 +121,6 @@ public class ClientManager {
         if (info != null) {
             info.setStatus(ClientInfo.STATUS_OFFLINE);
         }
-
         for (ClientEventListener listener : listeners) {
             try {
                 listener.onClientDisconnected(clientIp);
@@ -87,12 +128,8 @@ public class ClientManager {
                 System.err.println("[ClientManager] Loi callback listener: " + e.getMessage());
             }
         }
-        System.out.println("[ClientManager] Da xoa Client khoi danh sach: " + clientIp + " (Con lai: " + activeHandlers.size() + ")");
     }
 
-    /**
-     * Cập nhật thông tin hệ thống của máy Client (ví dụ từ gói tin SYS_INFO hoặc HEARTBEAT).
-     */
     public void updateClientInfo(ClientInfo info) {
         if (info == null || info.getIpAddress() == null) {
             return;
@@ -109,9 +146,6 @@ public class ClientManager {
         }
     }
 
-    /**
-     * Gửi gói tin đến một máy Client chỉ định qua địa chỉ IP.
-     */
     public boolean sendTo(String ip, MessagePacket packet) {
         ClientHandler handler = activeHandlers.get(ip);
         if (handler != null && handler.isRunning()) {
@@ -121,9 +155,6 @@ public class ClientManager {
         return false;
     }
 
-    /**
-     * Phát sóng gói tin tới toàn bộ các máy Client đang online.
-     */
     public void broadcast(MessagePacket packet) {
         for (ClientHandler handler : activeHandlers.values()) {
             if (handler.isRunning()) {

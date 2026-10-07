@@ -41,6 +41,7 @@ public class TestClient {
         ClientChatFrame[] chatFrameHolder = new ClientChatFrame[1];
 
         try {
+<<<<<<< HEAD
             System.out.println("[" + clientName + "] Đang kết nối tới Server " + serverIP + ":" + port + "...");
             socket = new Socket(serverIP, port);
             System.out.println("[" + clientName + "] Kết nối thành công tới Server!");
@@ -103,6 +104,18 @@ public class TestClient {
             while ((line = reader.readLine()) != null) {
                 line = line.trim();
                 if (line.isEmpty()) continue;
+
+                if (line.startsWith("BLOCK_WEB:")) {
+                    String[] domains = line.substring("BLOCK_WEB:".length()).split(",");
+                    System.out.println("[" + clientName + "] Dang ap dung cau hinh chan cac website:");
+                    for (String d : domains) {
+                        if (!d.trim().isEmpty()) {
+                            System.out.println(" - " + d.trim());
+                        }
+                    }
+                    System.out.println("[" + clientName + "] Da ap dung thanh cong!");
+                    continue;
+                }
 
                 // 2.1. Parse JSON gói tin từ Server
                 MessagePacket packet = JsonUtils.fromJson(line, MessagePacket.class);

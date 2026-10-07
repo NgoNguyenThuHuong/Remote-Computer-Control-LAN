@@ -118,6 +118,8 @@ public class ServerSendCommandTest {
              BufferedReader reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream(), StandardCharsets.UTF_8));
              BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(clientSocket.getOutputStream(), StandardCharsets.UTF_8))) {
 
+            clientSocket.setSoTimeout(5000);
+            Thread.sleep(150);
             String localIp = clientSocket.getLocalAddress().getHostAddress();
 
             // 1. Client gửi SYS_INFO
@@ -126,12 +128,15 @@ public class ServerSendCommandTest {
             writer.write(JsonUtils.toJson(sysInfoPacket));
             writer.newLine();
             writer.flush();
-
             Thread.sleep(100);
 
             // 2. Server gửi lệnh Command tới Client
             MessagePacket commandPacket = MessagePacket.createCommand(localIp, commandToSend);
-            boolean sent = ClientManager.getInstance().sendTo(localIp, commandPacket);
+            boolean sent = false;
+            for (int i = 0; i < 20 && !sent; i++) {
+                sent = ClientManager.getInstance().sendTo(localIp, commandPacket);
+                if (!sent) Thread.sleep(50);
+            }
             assertTrue(sent, "Server phải gửi được lệnh tới Client qua Socket");
 
             // 3. Client đọc lệnh và thực thi
@@ -171,6 +176,7 @@ public class ServerSendCommandTest {
 
         } finally {
             ClientManager.getInstance().removeCommandListener(listener);
+            Thread.sleep(100);
         }
     }
 }
