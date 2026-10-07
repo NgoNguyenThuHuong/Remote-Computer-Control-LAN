@@ -96,13 +96,17 @@ public class MainServer {
             String ip = (sender != null) ? sender.getClientIp() : packet.getSender();
             System.out.println("[MainServer - ACK] Nhận phản hồi thành công từ [" + ip + "]: " + packet.getPayload());
             ClientManager.getInstance().notifyCommandResponse(ip, MessagePacket.TYPE_ACK, packet.getPayload());
+            com.mycompany.remoteservercore.notification.NotificationService.getInstance()
+                    .notifyCommandExecuted(ip, "Thực thi lệnh", packet.getPayload());
         });
 
-        // 5. Xử lý phản hồi lệnh lỗi (ERROR) từ Client (Issue #34)
+        // 5. Xử lý phản hồi lệnh lỗi (ERROR) từ Client (Issue #34 & Issue #39)
         router.registerHandler(MessagePacket.TYPE_ERROR, (packet, sender) -> {
             String ip = (sender != null) ? sender.getClientIp() : packet.getSender();
             System.err.println("[MainServer - ERROR] Nhận báo lỗi từ [" + ip + "]: " + packet.getPayload());
             ClientManager.getInstance().notifyCommandResponse(ip, MessagePacket.TYPE_ERROR, packet.getPayload());
+            com.mycompany.remoteservercore.notification.NotificationService.getInstance()
+                    .notifyCommandFailed(ip, "Lỗi thực thi lệnh", packet.getPayload());
         });
 
         // 6. Xử lý phản hồi ảnh chụp màn hình từ Client (Issue 17 / Issue #38)
@@ -111,6 +115,8 @@ public class MainServer {
             System.out.println("[MainServer - SCREENSHOT] Nhận ảnh màn hình từ Client [" + ip + "], payload length: "
                     + (packet.getPayload() != null ? packet.getPayload().length() : 0));
             ClientManager.getInstance().notifyScreenshotReceived(ip, packet.getPayload());
+            com.mycompany.remoteservercore.notification.NotificationService.getInstance()
+                    .notifyScreenshotCaptured(ip, "Đã nhận ảnh chụp màn hình từ máy trạm");
         });
     }
 
@@ -126,6 +132,8 @@ public class MainServer {
             LogDAO.saveLog(new LogEntry("Server", "Login", "Server started on port " + port));
         } catch (RuntimeException e) {
             System.err.println("[FATAL] Không thể khởi tạo database: " + e.getMessage());
+            com.mycompany.remoteservercore.notification.NotificationService.getInstance()
+                    .notifySystemError("Database Init", e.getMessage());
         }
 
         // 2. Mở màn hình đăng nhập trên EDT (bắt buộc với Swing)
@@ -151,6 +159,8 @@ public class MainServer {
         } catch (IOException e) {
             if (running) {
                 System.err.println("[ERROR] Lỗi khởi động ServerSocket: " + e.getMessage());
+                com.mycompany.remoteservercore.notification.NotificationService.getInstance()
+                        .notifySystemError("ServerSocket", e.getMessage());
             }
         } finally {
             stop();

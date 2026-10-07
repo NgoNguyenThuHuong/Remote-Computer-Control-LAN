@@ -1,0 +1,14 @@
+# ===================================================================
+# Cấu hình Telegram Notification cho Hệ thống Remote Computer Control
+# ===================================================================
+# Tính năng này là OPTIONAL. Nếu không có internet hoặc telegram.enabled=false,
+# hệ thống LAN chính (Lock, Chat, Screenshot, Log...) vẫn chạy bình thường.
+
+# Bật (true) hoặc Tắt (false) thông báo Telegram
+telegram.enabled=false
+
+# Bot Token thu được từ Telegram @BotFather (ví dụ: 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ)
+telegram.bot_token=YOUR_TELEGRAM_BOT_TOKEN_HERE
+
+# Chat ID hoặc Channel ID nhận thông báo (ví dụ: 987654321 hoặc -100123456789)
+telegram.chat_id=YOUR_TELEGRAM_CHAT_ID_HERE

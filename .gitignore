@@ -1,3 +1,5 @@
 /RemoteServerCore/target/
 *.db
 .vscode/
+config.properties
+*.properties.local
