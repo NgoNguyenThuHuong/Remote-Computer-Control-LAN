@@ -5,6 +5,7 @@ public enum MessageType {
     LOGIN_RESPONSE,
     HEARTBEAT,
     HEARTBEAT_ACK,
+    ACK,
     CLIENT_INFO,
     COMMAND,
     COMMAND_RESULT,

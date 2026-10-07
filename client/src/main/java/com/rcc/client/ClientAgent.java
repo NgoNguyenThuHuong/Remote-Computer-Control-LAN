@@ -114,8 +114,28 @@ public class ClientAgent {
     }
     
     private void handleServerMessage(Message msg) {
-        if (msg.getType() == MessageType.HEARTBEAT_ACK) {
-            // Heartbeat received
+        if (msg == null || msg.getType() == null) return;
+
+        if (msg.getType() == MessageType.HEARTBEAT_ACK || msg.getType() == MessageType.ACK) {
+            // Heartbeat ACK / PONG received silently
+        } else if (msg.getType() == MessageType.COMMAND) {
+            String cmd = (msg.getPayload() != null) ? msg.getPayload().toString() : "";
+            System.out.println("Received Command: " + cmd);
+            try {
+                String hostname = InetAddress.getLocalHost().getHostName();
+                Message ack = new Message(MessageType.ACK, hostname, "[SAFE_MODE] Giả lập thực thi thành công lệnh: " + cmd);
+                out.println(JsonProtocol.serialize(ack));
+                System.out.println("Sent ACK response for command: " + cmd);
+            } catch (Exception e) {
+                System.err.println("Error responding to command: " + e.getMessage());
+            }
+        } else if (msg.getType() == MessageType.SCREENSHOT_REQUEST) {
+            System.out.println("Received Screenshot Request");
+            try {
+                String hostname = InetAddress.getLocalHost().getHostName();
+                Message ack = new Message(MessageType.ACK, hostname, "Screenshot request acknowledged");
+                out.println(JsonProtocol.serialize(ack));
+            } catch (Exception e) {}
         } else {
             System.out.println("Received from server: " + msg.getType() + " - " + msg.getPayload());
         }

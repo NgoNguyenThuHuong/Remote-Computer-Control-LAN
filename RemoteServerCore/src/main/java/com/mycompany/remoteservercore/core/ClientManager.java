@@ -89,6 +89,8 @@ public class ClientManager {
                 System.err.println("[ClientManager] Loi callback listener: " + e.getMessage());
             }
         }
+        com.mycompany.remoteservercore.notification.NotificationService.getInstance()
+                .notifyClientOnline(ip, info.getHostName());
         System.out.println("[ClientManager] Da them Client vao danh sach quan ly: " + ip + " (Tong so: " + activeHandlers.size() + ")");
     }
 
@@ -113,6 +115,8 @@ public class ClientManager {
                     System.err.println("[ClientManager] Loi callback listener: " + e.getMessage());
                 }
             }
+            com.mycompany.remoteservercore.notification.NotificationService.getInstance()
+                    .notifyClientOffline(ip, (info != null) ? info.getHostName() : ip);
             System.out.println("[ClientManager] Da xoa Client khoi danh sach: " + ip + " (Con lai: " + activeHandlers.size() + ")");
         }
     }
