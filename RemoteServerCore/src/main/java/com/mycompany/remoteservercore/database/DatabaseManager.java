@@ -1,14 +1,33 @@
 package com.mycompany.remoteservercore.database;
 
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.sql.Statement;
 
-/**
- *
- * @author admin
- */
 public class DatabaseManager {
-    
+    private static final String URL = "jdbc:sqlite:server_logs.db";
+
+    public static Connection getConnection() throws SQLException {
+        return DriverManager.getConnection(URL);
+    }
+
+    public static void initializeDatabase() {
+        try (Connection conn = getConnection();
+             Statement stmt = conn.createStatement()) {
+            
+            String createLogsTable = "CREATE TABLE IF NOT EXISTS logs (" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                    "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, " +
+                    "client_ip TEXT NOT NULL, " +
+                    "event_type TEXT NOT NULL, " +
+                    "description TEXT NOT NULL" +
+                    ");";
+            stmt.execute(createLogsTable);
+            System.out.println("[DB] Initialized logs table.");
+            
+        } catch (SQLException e) {
+            System.err.println("[DB] Error initializing database: " + e.getMessage());
+        }
+    }
 }

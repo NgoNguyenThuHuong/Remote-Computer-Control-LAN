@@ -20,8 +20,18 @@ public class MainServer {
     public static void main(String[] args) {
         System.out.println("=== HE THONG SERVER QUAN LY PHONG BAN ===");
         
+        // Khởi tạo Database SQLite cho Log
+        com.mycompany.remoteservercore.database.DatabaseManager.initializeDatabase();
+        com.mycompany.remoteservercore.database.LogDAO.saveLog(new com.mycompany.remoteservercore.model.LogEntry("Server", "Login", "Server started on port " + PORT));
+        
+        // Hiển thị giao diện UI quản lý chặn Web trên một Thread riêng biệt
+        java.awt.EventQueue.invokeLater(() -> {
+            new com.mycompany.remoteservercore.ui.BlockedWebFrame().setVisible(true);
+            new com.mycompany.remoteservercore.ui.LogFrame().setVisible(true);
+        });
+        
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
-            System.out.println("[INFO] Server đang KHOI DONG VA LANG NGHE TAI CONG:: " + PORT);
+            System.out.println("[INFO] Server dang KHOI DONG VA LANG NGHE TAI CONG:: " + PORT);
 
             while (true) {
                 Socket clientSocket = serverSocket.accept();
@@ -31,30 +41,6 @@ public class MainServer {
             
         } catch (IOException e) {
             System.err.println("[ERROR] Loi khoi dong server Server Socket: " + e.getMessage());
-        }
-    }
-}
-
-class ClientHandler implements Runnable {
-    private Socket socket;
-
-    public ClientHandler(Socket socket) {
-        this.socket = socket;
-    }
-
-    @Override
-    public void run() {
-        try {
-            // Xử lý dữ liệu client tại đây
-        } catch (Exception e) {
-            System.err.println("[WARNING] Loi xu ly client: " + e.getMessage());
-        } finally {
-            try {
-                socket.close();
-                System.out.println("[DISCONNECTED] Da dong ket noi voi client.");
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
         }
     }
 }

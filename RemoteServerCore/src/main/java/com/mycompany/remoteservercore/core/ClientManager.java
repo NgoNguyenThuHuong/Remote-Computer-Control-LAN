@@ -4,10 +4,23 @@
  */
 package com.mycompany.remoteservercore.core;
 
-/**
- *
- * @author admin
- */
+import java.util.ArrayList;
+import java.util.List;
+
 public class ClientManager {
-    
+    private static final List<ClientHandler> clients = new ArrayList<>();
+
+    public static synchronized void addClient(ClientHandler client) {
+        clients.add(client);
+    }
+
+    public static synchronized void removeClient(ClientHandler client) {
+        clients.remove(client);
+    }
+
+    public static synchronized void broadcast(String message) {
+        for (ClientHandler client : clients) {
+            client.sendMessage(message);
+        }
+    }
 }
