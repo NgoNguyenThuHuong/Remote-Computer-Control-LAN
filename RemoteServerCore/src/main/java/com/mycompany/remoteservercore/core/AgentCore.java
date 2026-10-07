@@ -63,9 +63,21 @@ public class AgentCore {
                 if (line.isEmpty()) continue;
 
                 MessagePacket packet = JsonUtils.fromJson(line, MessagePacket.class);
-                if (packet != null && MessagePacket.TYPE_CHAT.equalsIgnoreCase(packet.getType())) {
-                    if (chatListener != null) {
-                        chatListener.onMessageReceived(packet.getSender(), packet.getPayload(), packet.getTimestamp());
+                if (packet != null) {
+                    if (MessagePacket.TYPE_CHAT.equalsIgnoreCase(packet.getType())) {
+                        if (chatListener != null) {
+                            chatListener.onMessageReceived(packet.getSender(), packet.getPayload(), packet.getTimestamp());
+                        }
+                    } else if (MessagePacket.TYPE_SCREENSHOT_REQ.equalsIgnoreCase(packet.getType())) {
+                        try {
+                            String base64Img = com.mycompany.remoteservercore.features.ScreenCapturer.captureScreenAsBase64();
+                            MessagePacket resPacket = MessagePacket.createScreenshotResponse(clientName, base64Img);
+                            sendPacket(resPacket);
+                        } catch (Exception e) {
+                            System.err.println("[AgentCore] Lỗi khi chụp màn hình: " + e.getMessage());
+                            MessagePacket errPacket = MessagePacket.createError(clientName, "SERVER", "Lỗi chụp màn hình: " + e.getMessage());
+                            sendPacket(errPacket);
+                        }
                     }
                 }
             }

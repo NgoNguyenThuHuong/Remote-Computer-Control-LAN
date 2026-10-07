@@ -31,7 +31,7 @@ import java.util.List;
  *   <li>Hiển thị kết quả và chi tiết lỗi trực tiếp trên giao diện Server.</li>
  * </ol>
  */
-public class DashboardFrame extends JFrame implements ClientManager.ClientEventListener, ClientManager.CommandResponseListener, ClientManager.ChatMessageListener {
+public class DashboardFrame extends JFrame implements ClientManager.ClientEventListener, ClientManager.CommandResponseListener, ClientManager.ChatMessageListener, ClientManager.ScreenshotListener {
 
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
 
@@ -55,15 +55,19 @@ public class DashboardFrame extends JFrame implements ClientManager.ClientEventL
     private JButton btnBlockWeb;
     private JButton btnSendMessage;
 
+    // ─── Quản lý cửa sổ xem Screenshot theo IP máy trạm ──────────────────────────
+    private final java.util.Map<String, ScreenshotViewerFrame> screenshotFrames = new java.util.concurrent.ConcurrentHashMap<>();
+
     public DashboardFrame(User user) {
         this.currentUser = user;
         initComponents();
         applyRolePermissions();
 
-        // Đăng ký listener lắng nghe cập nhật danh sách Client kết nối, phản hồi lệnh và tin nhắn chat
+        // Đăng ký listener lắng nghe cập nhật danh sách Client kết nối, phản hồi lệnh, chat và screenshot
         ClientManager.getInstance().addListener(this);
         ClientManager.getInstance().addCommandListener(this);
         ClientManager.getInstance().addChatMessageListener(this);
+        ClientManager.getInstance().addScreenshotListener(this);
 
         refreshClientTable();
         appendLog("Hệ thống Dashboard sẵn sàng. Đang kết nối với mạng LAN nội bộ.");
@@ -306,6 +310,8 @@ public class DashboardFrame extends JFrame implements ClientManager.ClientEventL
         btnRestart.addActionListener(e -> sendCommandToClient(MessagePacket.CMD_RESTART));
         btnShutdown.addActionListener(e -> sendCommandToClient(MessagePacket.CMD_SHUTDOWN));
         btnSendMessage.addActionListener(e -> sendChatMessage());
+        btnScreenCapture.addActionListener(e -> requestScreenshotFromClient());
+        btnBlockWeb.addActionListener(e -> new BlockedWebFrame().setVisible(true));
 
         panel.add(btnLock);
         panel.add(btnLogoutClient);
@@ -471,6 +477,110 @@ public class DashboardFrame extends JFrame implements ClientManager.ClientEventL
         chatFrame.toFront();
     }
 
+    /**
+     * Yêu cầu chụp màn hình từ Client được chọn trong bảng (Issue 17 / Issue #38).
+     */
+    private void requestScreenshotFromClient() {
+        int selectedRow = clientTable.getSelectedRow();
+        if (selectedRow < 0) {
+            JOptionPane.showMessageDialog(this,
+                    "Vui lòng chọn một Client trong bảng danh sách trước khi yêu cầu chụp màn hình!",
+                    "Chưa chọn Client", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        String targetIp = (String) tableModel.getValueAt(selectedRow, 0);
+        String hostName = (String) tableModel.getValueAt(selectedRow, 1);
+        String status = (String) tableModel.getValueAt(selectedRow, 5);
+
+        if (status != null && status.toUpperCase().contains("OFFLINE")) {
+            JOptionPane.showMessageDialog(this,
+                    "Client [" + hostName + " (" + targetIp + ")] đang OFFLINE!\nKhông thể yêu cầu chụp màn hình.",
+                    "Client Offline", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        sendScreenshotRequestDirect(targetIp);
+    }
+
+    /**
+     * Gửi trực tiếp gói tin yêu cầu chụp ảnh SCREENSHOT_REQ tới IP máy trạm.
+     */
+    private void sendScreenshotRequestDirect(String targetIp) {
+        ClientInfo info = ClientManager.getInstance().getClientInfo(targetIp);
+        String hostName = (info != null && info.getHostName() != null) ? info.getHostName() : targetIp;
+
+        MessagePacket packet = MessagePacket.createScreenshotRequest(targetIp);
+        boolean success = ClientManager.getInstance().sendTo(targetIp, packet);
+
+        if (success) {
+            appendLog("📷 [YÊU CẦU SCREENSHOT] Đã gửi yêu cầu chụp màn hình tới Client " + hostName + " (" + targetIp + "). Đang chờ nhận ảnh...");
+            if (statusLabel != null) {
+                statusLabel.setText("Đang yêu cầu chụp màn hình từ " + hostName + "...");
+            }
+        } else {
+            appendLog("⚠️ [LỖI GỬI] Không thể gửi yêu cầu screenshot tới Client " + hostName + " (" + targetIp + ") do mất kết nối!");
+            JOptionPane.showMessageDialog(this,
+                    "Không thể gửi yêu cầu chụp màn hình tới Client " + hostName + " (" + targetIp + ")!\nClient có thể đã mất kết nối.",
+                    "Lỗi gửi yêu cầu", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    /**
+     * Tiếp nhận và xử lý ảnh chụp màn hình nhận được từ Client (Issue 17 / Issue #38).
+     */
+    @Override
+    public void onScreenshotReceived(String clientIp, String base64Image) {
+        SwingUtilities.invokeLater(() -> {
+            ClientInfo info = ClientManager.getInstance().getClientInfo(clientIp);
+            String clientName = (info != null && info.getHostName() != null) ? info.getHostName() : clientIp;
+
+            try {
+                java.awt.image.BufferedImage image = com.mycompany.remoteservercore.features.ScreenCapturer.base64ToImage(base64Image);
+                int w = (image != null) ? image.getWidth() : 0;
+                int h = (image != null) ? image.getHeight() : 0;
+
+                appendLog("✅ [NHẬN SCREENSHOT] Đã nhận ảnh màn hình từ Client " + clientName + " (" + clientIp + ") - Độ phân giải: " + w + "x" + h + " px");
+                if (statusLabel != null) {
+                    statusLabel.setText("✅ Đã nhận ảnh màn hình từ " + clientName);
+                }
+
+                // Ghi nhận Activity Log vào cơ sở dữ liệu
+                try {
+                    com.mycompany.remoteservercore.database.LogDAO.saveLog(
+                            new com.mycompany.remoteservercore.model.LogEntry(
+                                    clientIp,
+                                    com.mycompany.remoteservercore.model.LogEntry.ACTION_SCREENSHOT,
+                                    "Chụp màn hình máy trạm thành công (" + w + "x" + h + " px)"
+                            )
+                    );
+                } catch (Exception ignored) {}
+
+                // Mở cửa sổ hiển thị ảnh màn hình
+                ScreenshotViewerFrame frame = screenshotFrames.computeIfAbsent(clientIp, ip -> {
+                    ScreenshotViewerFrame f = new ScreenshotViewerFrame(clientIp, clientName, image, this::sendScreenshotRequestDirect);
+                    f.addWindowListener(new java.awt.event.WindowAdapter() {
+                        @Override
+                        public void windowClosed(java.awt.event.WindowEvent e) {
+                            screenshotFrames.remove(clientIp);
+                        }
+                    });
+                    return f;
+                });
+                frame.updateImage(image);
+                frame.setVisible(true);
+                frame.toFront();
+
+            } catch (Exception e) {
+                System.err.println("[DashboardFrame] Lỗi giải mã ảnh screenshot: " + e.getMessage());
+                appendLog("❌ [LỖI GIẢI MÃ SCREENSHOT] từ Client " + clientName + " (" + clientIp + "): " + e.getMessage());
+                JOptionPane.showMessageDialog(this,
+                        "Lỗi giải mã ảnh chụp màn hình nhận được từ " + clientName + ":\n" + e.getMessage(),
+                        "Lỗi ảnh", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+    }
+
     @Override
     public void onChatMessageReceived(MessagePacket packet) {
         SwingUtilities.invokeLater(() -> {
@@ -509,6 +619,7 @@ public class DashboardFrame extends JFrame implements ClientManager.ClientEventL
             ClientManager.getInstance().removeListener(this);
             ClientManager.getInstance().removeCommandListener(this);
             ClientManager.getInstance().removeChatMessageListener(this);
+            ClientManager.getInstance().removeScreenshotListener(this);
             SwingUtilities.invokeLater(() -> {
                 LoginFrame loginFrame = new LoginFrame();
                 loginFrame.setVisible(true);

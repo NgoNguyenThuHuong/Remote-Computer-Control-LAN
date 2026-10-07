@@ -41,7 +41,6 @@ public class TestClient {
         ClientChatFrame[] chatFrameHolder = new ClientChatFrame[1];
 
         try {
-<<<<<<< HEAD
             System.out.println("[" + clientName + "] Đang kết nối tới Server " + serverIP + ":" + port + "...");
             socket = new Socket(serverIP, port);
             System.out.println("[" + clientName + "] Kết nối thành công tới Server!");
@@ -192,6 +191,28 @@ public class TestClient {
                     System.out.println("[" + clientName + "] 💬 Tin nhắn Chat từ Server: " + packet.getPayload());
                     if (chatFrameHolder[0] != null) {
                         chatFrameHolder[0].onMessageReceived(packet.getSender(), packet.getPayload(), packet.getTimestamp());
+                    }
+
+                } else if (MessagePacket.TYPE_SCREENSHOT_REQ.equalsIgnoreCase(packet.getType())) {
+                    // Xử lý gói tin yêu cầu chụp màn hình từ Server (Issue 17 / Issue #38)
+                    System.out.println("[" + clientName + "] 📷 Nhận yêu cầu SCREENSHOT từ Server...");
+                    try {
+                        String base64Image = com.mycompany.remoteservercore.features.ScreenCapturer.captureScreenAsBase64();
+                        MessagePacket resPacket = MessagePacket.createScreenshotResponse(clientName, base64Image);
+                        synchronized (outWriter) {
+                            outWriter.write(JsonUtils.toJson(resPacket));
+                            outWriter.newLine();
+                            outWriter.flush();
+                        }
+                        System.out.println("[" + clientName + "] >> Đã chụp và gửi ảnh màn hình về Server thành công!");
+                    } catch (Exception e) {
+                        System.err.println("[" + clientName + "] Lỗi khi chụp màn hình: " + e.getMessage());
+                        MessagePacket errPacket = MessagePacket.createError(clientName, packet.getSender(), "Lỗi chụp màn hình: " + e.getMessage());
+                        synchronized (outWriter) {
+                            outWriter.write(JsonUtils.toJson(errPacket));
+                            outWriter.newLine();
+                            outWriter.flush();
+                        }
                     }
                 }
             }

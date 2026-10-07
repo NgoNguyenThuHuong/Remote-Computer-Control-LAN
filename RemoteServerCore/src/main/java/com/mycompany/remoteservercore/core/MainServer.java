@@ -104,6 +104,14 @@ public class MainServer {
             System.err.println("[MainServer - ERROR] Nhận báo lỗi từ [" + ip + "]: " + packet.getPayload());
             ClientManager.getInstance().notifyCommandResponse(ip, MessagePacket.TYPE_ERROR, packet.getPayload());
         });
+
+        // 6. Xử lý phản hồi ảnh chụp màn hình từ Client (Issue 17 / Issue #38)
+        router.registerHandler(MessagePacket.TYPE_SCREENSHOT_RES, (packet, sender) -> {
+            String ip = (sender != null) ? sender.getClientIp() : packet.getSender();
+            System.out.println("[MainServer - SCREENSHOT] Nhận ảnh màn hình từ Client [" + ip + "], payload length: "
+                    + (packet.getPayload() != null ? packet.getPayload().length() : 0));
+            ClientManager.getInstance().notifyScreenshotReceived(ip, packet.getPayload());
+        });
     }
 
     /**

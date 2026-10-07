@@ -28,6 +28,10 @@ public class ClientManager {
         void onChatMessageReceived(MessagePacket packet);
     }
 
+    public interface ScreenshotListener {
+        void onScreenshotReceived(String clientIp, String base64Image);
+    }
+
     private static final ClientManager INSTANCE = new ClientManager();
 
     private final Map<String, ClientHandler> activeHandlers = new ConcurrentHashMap<>();
@@ -35,6 +39,7 @@ public class ClientManager {
     private final List<ClientEventListener> listeners = new CopyOnWriteArrayList<>();
     private final List<CommandResponseListener> commandListeners = new CopyOnWriteArrayList<>();
     private final List<ChatMessageListener> chatListeners = new CopyOnWriteArrayList<>();
+    private final List<ScreenshotListener> screenshotListeners = new CopyOnWriteArrayList<>();
 
     private ClientManager() {
     }
@@ -215,6 +220,24 @@ public class ClientManager {
                 listener.onChatMessageReceived(packet);
             } catch (Exception e) {
                 System.err.println("[ClientManager] Loi callback chat listener: " + e.getMessage());
+            }
+        }
+    }
+
+    public void addScreenshotListener(ScreenshotListener listener) {
+        screenshotListeners.add(listener);
+    }
+
+    public void removeScreenshotListener(ScreenshotListener listener) {
+        screenshotListeners.remove(listener);
+    }
+
+    public void notifyScreenshotReceived(String clientIp, String base64Image) {
+        for (ScreenshotListener listener : screenshotListeners) {
+            try {
+                listener.onScreenshotReceived(clientIp, base64Image);
+            } catch (Exception e) {
+                System.err.println("[ClientManager] Loi callback screenshot listener: " + e.getMessage());
             }
         }
     }
