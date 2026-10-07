@@ -4,7 +4,10 @@ import com.mycompany.remoteservercore.features.SystemControl;
 import com.mycompany.remoteservercore.model.ClientInfo;
 import com.mycompany.remoteservercore.model.MessagePacket;
 import com.mycompany.remoteservercore.protocol.JsonUtils;
+import com.mycompany.remoteservercore.ui.ClientChatFrame;
 
+import javax.swing.SwingUtilities;
+import java.awt.GraphicsEnvironment;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -15,26 +18,59 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * Client thử nghiệm (Agent Client) kết nối tới MainServer qua TCP Socket.
- * Thực thi các yêu cầu của Issue #33:
+ * Thực thi các yêu cầu của Issue #33 & Issue #35 (Issue 14):
  *  1. Parse JSON gói tin nhận được từ Server.
  *  2. Kiểm tra command (LOCK, LOGOUT, RESTART, SHUTDOWN).
  *  3. Thực thi command hệ thống qua SystemControl.
  *  4. Phản hồi kết quả (ACK / ERROR) về cho Server.
- *  5. Xử lý lệnh không hợp lệ & Exception Handling.
+ *  5. Chat 2 chiều Server ↔ Client (giao diện ClientChatFrame + xử lý mất kết nối).
  */
 public class TestClient {
 
     public static void runClient(String clientName, String serverIP, int port, boolean safeMode) {
+        runClient(clientName, serverIP, port, safeMode, true);
+    }
+
+    public static void runClient(String clientName, String serverIP, int port, boolean safeMode, boolean enableGui) {
         // Cấu hình chế độ an toàn Safe Mode cho thử nghiệm
         SystemControl.setSafeMode(safeMode);
 
+        Socket socket = null;
+        BufferedWriter writer = null;
+        BufferedReader reader = null;
+        ClientChatFrame[] chatFrameHolder = new ClientChatFrame[1];
+
         try {
             System.out.println("[" + clientName + "] Đang kết nối tới Server " + serverIP + ":" + port + "...");
-            Socket socket = new Socket(serverIP, port);
+            socket = new Socket(serverIP, port);
             System.out.println("[" + clientName + "] Kết nối thành công tới Server!");
 
-            BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
-            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
+            reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+            writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
+
+            final BufferedWriter outWriter = writer;
+
+            // Khởi tạo giao diện Chat phía Client nếu có hỗ trợ đồ họa
+            if (enableGui && !GraphicsEnvironment.isHeadless()) {
+                SwingUtilities.invokeLater(() -> {
+                    ClientChatFrame frame = new ClientChatFrame(clientName, message -> {
+                        try {
+                            MessagePacket chatPacket = MessagePacket.createChat(clientName, "SERVER", message);
+                            synchronized (outWriter) {
+                                outWriter.write(JsonUtils.toJson(chatPacket));
+                                outWriter.newLine();
+                                outWriter.flush();
+                            }
+                            return true;
+                        } catch (IOException e) {
+                            System.err.println("[" + clientName + "] Lỗi khi gửi tin nhắn chat: " + e.getMessage());
+                            return false;
+                        }
+                    });
+                    frame.setVisible(true);
+                    chatFrameHolder[0] = frame;
+                });
+            }
 
             // 1. Gửi gói tin thông tin hệ thống Client (SYS_INFO)
             ClientInfo clientInfo = new ClientInfo();
@@ -56,11 +92,13 @@ public class TestClient {
             );
 
             System.out.println("[" + clientName + "] >> Gửi SYS_INFO lên Server...");
-            writer.write(JsonUtils.toJson(sysInfoPacket));
-            writer.newLine();
-            writer.flush();
+            synchronized (outWriter) {
+                outWriter.write(JsonUtils.toJson(sysInfoPacket));
+                outWriter.newLine();
+                outWriter.flush();
+            }
 
-            // 2. Vòng lặp lắng nghe lệnh từ Server (Issue #33)
+            // 2. Vòng lặp lắng nghe lệnh và tin nhắn từ Server
             String line;
             while ((line = reader.readLine()) != null) {
                 line = line.trim();
@@ -71,9 +109,11 @@ public class TestClient {
                 if (packet == null) {
                     System.err.println("[" + clientName + "] << Lỗi Parse JSON: " + line);
                     MessagePacket errPacket = MessagePacket.createError(clientName, "SERVER", "Lỗi định dạng JSON gói tin");
-                    writer.write(JsonUtils.toJson(errPacket));
-                    writer.newLine();
-                    writer.flush();
+                    synchronized (outWriter) {
+                        outWriter.write(JsonUtils.toJson(errPacket));
+                        outWriter.newLine();
+                        outWriter.flush();
+                    }
                     continue;
                 }
 
@@ -92,9 +132,11 @@ public class TestClient {
                                 packet.getSender(),
                                 "Lệnh không hợp lệ hoặc không được hỗ trợ: " + commandStr
                         );
-                        writer.write(JsonUtils.toJson(errPacket));
-                        writer.newLine();
-                        writer.flush();
+                        synchronized (outWriter) {
+                            outWriter.write(JsonUtils.toJson(errPacket));
+                            outWriter.newLine();
+                            outWriter.flush();
+                        }
                         continue;
                     }
 
@@ -109,9 +151,11 @@ public class TestClient {
                                 packet.getSender(),
                                 resultMsg
                         );
-                        writer.write(JsonUtils.toJson(ackPacket));
-                        writer.newLine();
-                        writer.flush();
+                        synchronized (outWriter) {
+                            outWriter.write(JsonUtils.toJson(ackPacket));
+                            outWriter.newLine();
+                            outWriter.flush();
+                        }
 
                     } catch (Exception e) {
                         System.err.println("[" + clientName + "] Lỗi ngoại lệ khi thực thi lệnh " + commandStr + ": " + e.getMessage());
@@ -120,21 +164,34 @@ public class TestClient {
                                 packet.getSender(),
                                 "Lỗi thực thi lệnh " + commandStr + ": " + e.getMessage()
                         );
-                        writer.write(JsonUtils.toJson(errPacket));
-                        writer.newLine();
-                        writer.flush();
+                        synchronized (outWriter) {
+                            outWriter.write(JsonUtils.toJson(errPacket));
+                            outWriter.newLine();
+                            outWriter.flush();
+                        }
                     }
 
                 } else if (MessagePacket.TYPE_ACK.equalsIgnoreCase(packet.getType())) {
                     System.out.println("[" + clientName + "] ACK từ Server: " + packet.getPayload());
+
                 } else if (MessagePacket.TYPE_CHAT.equalsIgnoreCase(packet.getType())) {
-                    System.out.println("[" + clientName + "] Tin nhắn Chat từ Server: " + packet.getPayload());
+                    // Xử lý gói tin CHAT 2 chiều từ Server (Issue #35 / Issue 14)
+                    System.out.println("[" + clientName + "] 💬 Tin nhắn Chat từ Server: " + packet.getPayload());
+                    if (chatFrameHolder[0] != null) {
+                        chatFrameHolder[0].onMessageReceived(packet.getSender(), packet.getPayload(), packet.getTimestamp());
+                    }
                 }
             }
 
         } catch (IOException e) {
             System.err.println("[" + clientName + "] Mất kết nối tới Server: " + e.getMessage());
+            if (chatFrameHolder[0] != null) {
+                chatFrameHolder[0].setConnected(false);
+            }
         } finally {
+            try {
+                if (socket != null && !socket.isClosed()) socket.close();
+            } catch (IOException ignored) {}
             System.out.println("[" + clientName + "] Đã dừng Client Agent.");
         }
     }
@@ -146,9 +203,9 @@ public class TestClient {
         // Bật Safe Mode = true để thử nghiệm an toàn trên NetBeans (không thực sự tắt máy khi test)
         boolean safeMode = true;
 
-        System.out.println("=== BẮT ĐẦU CHẠY CLIENT AGENT (KIỂM THỬ ISSUE #33) ===");
-        System.out.println("[CHÚ Ý] Safe Mode đang BẬT. Các lệnh LOCK, RESTART, LOGOUT sẽ được giả lập thực thi an toàn.");
+        System.out.println("=== BẮT ĐẦU CHẠY CLIENT AGENT (KIỂM THỬ ISSUE #33 & ISSUE #35) ===");
+        System.out.println("[CHÚ Ý] Safe Mode đang BẬT. Cửa sổ Chat nội bộ phía Client đang khởi động...");
 
-        runClient("CLIENT-MAY-01", serverIP, port, safeMode);
+        runClient("CLIENT-MAY-01", serverIP, port, safeMode, true);
     }
 }

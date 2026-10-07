@@ -65,6 +65,10 @@ public class MessagePacket implements Serializable {
         return new MessagePacket(TYPE_CHAT, sender, target, message);
     }
 
+    public static MessagePacket createChat(String sender, String target, String message, long timestamp) {
+        return new MessagePacket(TYPE_CHAT, sender, target, message, timestamp);
+    }
+
     public static MessagePacket createCommand(String target, String command) {
         return new MessagePacket(TYPE_COMMAND, "SERVER", target, command);
     }
