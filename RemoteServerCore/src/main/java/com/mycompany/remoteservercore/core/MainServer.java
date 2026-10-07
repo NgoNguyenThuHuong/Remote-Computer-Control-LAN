@@ -74,14 +74,17 @@ public class MainServer {
             }
         });
 
-        // 3. Xử lý tin nhắn Chat từ Client
+        // 3. Xử lý tin nhắn Chat 2 chiều từ Client (Issue #35 / Issue 14)
         router.registerHandler(MessagePacket.TYPE_CHAT, (packet, sender) -> {
-            System.out.println("[MainServer - CHAT] Từ [" + packet.getSender() + " (" + (sender != null ? sender.getClientIp() : "") + ")]: " + packet.getPayload());
+            String clientIp = (sender != null) ? sender.getClientIp() : packet.getSender();
+            System.out.println("[MainServer - CHAT] Từ [" + packet.getSender() + " (" + clientIp + ")]: " + packet.getPayload());
 
-            // Server gửi phản hồi Chat JSON ngược lại cho Client
-            if (sender != null) {
-                sender.sendPacket(MessagePacket.createChat("SERVER", sender.getClientIp(), "Server đã nhận tin: \"" + packet.getPayload() + "\""));
+            if (packet.getSender() == null || packet.getSender().trim().isEmpty()) {
+                packet.setSender(clientIp);
             }
+
+            // Chuyển tiếp tin nhắn cho các listener (ChatFrame, DashboardFrame)
+            ClientManager.getInstance().notifyChatMessageReceived(packet);
         });
 
         // 4. Xử lý phản hồi lệnh thành công (ACK) từ Client (Issue #34)

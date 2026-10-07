@@ -24,12 +24,17 @@ public class ClientManager {
         void onCommandResponse(String clientIp, String type, String message);
     }
 
+    public interface ChatMessageListener {
+        void onChatMessageReceived(MessagePacket packet);
+    }
+
     private static final ClientManager INSTANCE = new ClientManager();
 
     private final Map<String, ClientHandler> activeHandlers = new ConcurrentHashMap<>();
     private final Map<String, ClientInfo> clientInfoMap = new ConcurrentHashMap<>();
     private final List<ClientEventListener> listeners = new CopyOnWriteArrayList<>();
     private final List<CommandResponseListener> commandListeners = new CopyOnWriteArrayList<>();
+    private final List<ChatMessageListener> chatListeners = new CopyOnWriteArrayList<>();
 
     private ClientManager() {
     }
@@ -161,6 +166,24 @@ public class ClientManager {
                 listener.onCommandResponse(clientIp, type, message);
             } catch (Exception e) {
                 System.err.println("[ClientManager] Loi callback command listener: " + e.getMessage());
+            }
+        }
+    }
+
+    public void addChatMessageListener(ChatMessageListener listener) {
+        chatListeners.add(listener);
+    }
+
+    public void removeChatMessageListener(ChatMessageListener listener) {
+        chatListeners.remove(listener);
+    }
+
+    public void notifyChatMessageReceived(MessagePacket packet) {
+        for (ChatMessageListener listener : chatListeners) {
+            try {
+                listener.onChatMessageReceived(packet);
+            } catch (Exception e) {
+                System.err.println("[ClientManager] Loi callback chat listener: " + e.getMessage());
             }
         }
     }

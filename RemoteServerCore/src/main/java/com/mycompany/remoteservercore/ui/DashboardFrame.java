@@ -31,7 +31,7 @@ import java.util.List;
  *   <li>Hiển thị kết quả và chi tiết lỗi trực tiếp trên giao diện Server.</li>
  * </ol>
  */
-public class DashboardFrame extends JFrame implements ClientManager.ClientEventListener, ClientManager.CommandResponseListener {
+public class DashboardFrame extends JFrame implements ClientManager.ClientEventListener, ClientManager.CommandResponseListener, ClientManager.ChatMessageListener {
 
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
 
@@ -60,9 +60,10 @@ public class DashboardFrame extends JFrame implements ClientManager.ClientEventL
         initComponents();
         applyRolePermissions();
 
-        // Đăng ký listener lắng nghe cập nhật danh sách Client kết nối và phản hồi lệnh
+        // Đăng ký listener lắng nghe cập nhật danh sách Client kết nối, phản hồi lệnh và tin nhắn chat
         ClientManager.getInstance().addListener(this);
         ClientManager.getInstance().addCommandListener(this);
+        ClientManager.getInstance().addChatMessageListener(this);
 
         refreshClientTable();
         appendLog("Hệ thống Dashboard sẵn sàng. Đang kết nối với mạng LAN nội bộ.");
@@ -460,13 +461,21 @@ public class DashboardFrame extends JFrame implements ClientManager.ClientEventL
     }
 
     private void sendChatMessage() {
-        String msg = JOptionPane.showInputDialog(this, "Nhập nội dung tin nhắn gửi tới Client:", "Gửi Tin Nhắn", JOptionPane.QUESTION_MESSAGE);
-        if (msg != null && !msg.isBlank()) {
-            MessagePacket chatPacket = MessagePacket.createChat("SERVER", "ALL", msg.trim());
-            ClientManager.getInstance().broadcast(chatPacket);
-            appendLog("💬 [CHAT] Đã gửi tin nhắn broadcast: \"" + msg.trim() + "\"");
-            JOptionPane.showMessageDialog(this, "Đã gửi tin nhắn chat tới toàn bộ Client!");
+        int selectedRow = clientTable.getSelectedRow();
+        String targetIp = null;
+        if (selectedRow >= 0) {
+            targetIp = (String) tableModel.getValueAt(selectedRow, 0);
         }
+        ChatFrame chatFrame = ChatFrame.getInstance(targetIp);
+        chatFrame.setVisible(true);
+        chatFrame.toFront();
+    }
+
+    @Override
+    public void onChatMessageReceived(MessagePacket packet) {
+        SwingUtilities.invokeLater(() -> {
+            appendLog("💬 [CHAT từ " + packet.getSender() + "]: " + packet.getPayload());
+        });
     }
 
     private void refreshClientTable() {
@@ -499,6 +508,7 @@ public class DashboardFrame extends JFrame implements ClientManager.ClientEventL
         if (confirm == JOptionPane.YES_OPTION) {
             ClientManager.getInstance().removeListener(this);
             ClientManager.getInstance().removeCommandListener(this);
+            ClientManager.getInstance().removeChatMessageListener(this);
             SwingUtilities.invokeLater(() -> {
                 LoginFrame loginFrame = new LoginFrame();
                 loginFrame.setVisible(true);
