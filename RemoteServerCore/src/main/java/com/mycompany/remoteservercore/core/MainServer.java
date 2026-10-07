@@ -83,6 +83,20 @@ public class MainServer {
                 sender.sendPacket(MessagePacket.createChat("SERVER", sender.getClientIp(), "Server đã nhận tin: \"" + packet.getPayload() + "\""));
             }
         });
+
+        // 4. Xử lý phản hồi lệnh thành công (ACK) từ Client (Issue #34)
+        router.registerHandler(MessagePacket.TYPE_ACK, (packet, sender) -> {
+            String ip = (sender != null) ? sender.getClientIp() : packet.getSender();
+            System.out.println("[MainServer - ACK] Nhận phản hồi thành công từ [" + ip + "]: " + packet.getPayload());
+            ClientManager.getInstance().notifyCommandResponse(ip, MessagePacket.TYPE_ACK, packet.getPayload());
+        });
+
+        // 5. Xử lý phản hồi lệnh lỗi (ERROR) từ Client (Issue #34)
+        router.registerHandler(MessagePacket.TYPE_ERROR, (packet, sender) -> {
+            String ip = (sender != null) ? sender.getClientIp() : packet.getSender();
+            System.err.println("[MainServer - ERROR] Nhận báo lỗi từ [" + ip + "]: " + packet.getPayload());
+            ClientManager.getInstance().notifyCommandResponse(ip, MessagePacket.TYPE_ERROR, packet.getPayload());
+        });
     }
 
     /**

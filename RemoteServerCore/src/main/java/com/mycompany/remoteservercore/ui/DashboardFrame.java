@@ -8,28 +8,43 @@ import com.mycompany.remoteservercore.model.User;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.TitledBorder;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 /**
  * Màn hình chính (Dashboard) sau khi đăng nhập thành công.
+ * Hiện thực toàn diện tính năng Issue #34: Gửi lệnh điều khiển từ Server tới Client.
  *
- * <p>Phân quyền:
- * <ul>
- *   <li><b>ADMIN</b> — Tất cả nút điều khiển hệ thống (LOCK, LOGOUT, RESTART, SHUTDOWN) được kích hoạt.</li>
- *   <li><b>USER</b>  — Các nút điều khiển bị vô hiệu hóa (chỉ xem).</li>
- * </ul>
+ * <p>Luồng thực thi:
+ * <ol>
+ *   <li>Chọn Client từ bảng danh sách.</li>
+ *   <li>Chọn Command (LOCK, LOGOUT, RESTART, SHUTDOWN).</li>
+ *   <li>Tạo JSON gói tin MessagePacket.</li>
+ *   <li>Gửi qua TCP Socket tới Client mục tiêu.</li>
+ *   <li>Client thực thi và trả kết quả (ACK) hoặc lỗi (ERROR).</li>
+ *   <li>Hiển thị kết quả và chi tiết lỗi trực tiếp trên giao diện Server.</li>
+ * </ol>
  */
-public class DashboardFrame extends JFrame implements ClientManager.ClientEventListener {
+public class DashboardFrame extends JFrame implements ClientManager.ClientEventListener, ClientManager.CommandResponseListener {
+
+    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
 
     private final User currentUser;
 
-    // ─── Table ─────────────
+    // ─── Table & Status ─────────────
     private JTable clientTable;
     private DefaultTableModel tableModel;
+    private JLabel selectedClientLabel;
+    private JLabel statusLabel;
+
+    // ─── Console / Log kết quả thực thi ───
+    private JTextArea logTextArea;
 
     // ─── Các nút điều khiển (ADMIN) ───────────────────────────────────────────────
     private JButton btnLock;
@@ -45,16 +60,20 @@ public class DashboardFrame extends JFrame implements ClientManager.ClientEventL
         initComponents();
         applyRolePermissions();
 
-        // Đăng ký listener lắng nghe cập nhật danh sách Client kết nối
+        // Đăng ký listener lắng nghe cập nhật danh sách Client kết nối và phản hồi lệnh
         ClientManager.getInstance().addListener(this);
+        ClientManager.getInstance().addCommandListener(this);
+
         refreshClientTable();
+        appendLog("Hệ thống Dashboard sẵn sàng. Đang kết nối với mạng LAN nội bộ.");
     }
 
     private void initComponents() {
         setTitle("Dashboard — " + currentUser.getUsername()
                 + " [" + currentUser.getRole() + "]");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(880, 600);
+        setSize(1000, 720);
+        setMinimumSize(new Dimension(880, 600));
         setLocationRelativeTo(null);
 
         JPanel root = new JPanel(new BorderLayout(0, 0));
@@ -107,24 +126,40 @@ public class DashboardFrame extends JFrame implements ClientManager.ClientEventL
     private JPanel buildMainContent() {
         JPanel content = new JPanel(new BorderLayout(16, 16));
         content.setBackground(new Color(30, 30, 46));
-        content.setBorder(new EmptyBorder(20, 20, 10, 20));
+        content.setBorder(new EmptyBorder(16, 20, 10, 20));
 
-        content.add(buildClientListPanel(), BorderLayout.CENTER);
+        // Khu vực trung tâm: Bảng Client phía trên, Nhật ký & Kết quả phía dưới
+        JPanel centerPanel = new JPanel(new BorderLayout(0, 12));
+        centerPanel.setBackground(new Color(30, 30, 46));
+
+        centerPanel.add(buildClientListPanel(), BorderLayout.CENTER);
+        centerPanel.add(buildExecutionLogPanel(), BorderLayout.SOUTH);
+
+        content.add(centerPanel, BorderLayout.CENTER);
         content.add(buildControlPanel(), BorderLayout.EAST);
 
         return content;
     }
 
     private JPanel buildClientListPanel() {
-        JPanel panel = new JPanel(new BorderLayout());
+        JPanel panel = new JPanel(new BorderLayout(0, 6));
         panel.setBackground(new Color(49, 50, 68));
-        panel.setBorder(BorderFactory.createTitledBorder(
-                BorderFactory.createLineBorder(new Color(88, 91, 112)),
-                "Danh sách Client kết nối LAN",
-                TitledBorder.LEFT, TitledBorder.TOP,
-                new Font("Segoe UI", Font.BOLD, 13),
-                new Color(137, 180, 250)
+        panel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createTitledBorder(
+                        BorderFactory.createLineBorder(new Color(88, 91, 112)),
+                        "Danh sách Client kết nối LAN",
+                        TitledBorder.LEFT, TitledBorder.TOP,
+                        new Font("Segoe UI", Font.BOLD, 13),
+                        new Color(137, 180, 250)
+                ),
+                new EmptyBorder(6, 8, 8, 8)
         ));
+
+        // Nhãn chỉ báo Client đang được chọn
+        selectedClientLabel = new JLabel("🎯 Chưa chọn Client nào (Nhấn chọn một máy trong danh sách để điều khiển)");
+        selectedClientLabel.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        selectedClientLabel.setForeground(new Color(249, 226, 175));
+        selectedClientLabel.setBorder(new EmptyBorder(4, 4, 6, 4));
 
         String[] columns = {"IP Address", "Tên máy", "Người dùng", "CPU", "RAM", "Trạng thái"};
         tableModel = new DefaultTableModel(columns, 0) {
@@ -141,28 +176,120 @@ public class DashboardFrame extends JFrame implements ClientManager.ClientEventL
         clientTable.getTableHeader().setForeground(new Color(203, 166, 247));
         clientTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 13));
         clientTable.setSelectionBackground(new Color(88, 91, 112));
+        clientTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         clientTable.setName("clientTable");
+
+        // Tô màu cột trạng thái
+        DefaultTableCellRenderer statusRenderer = new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+                Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+                setHorizontalAlignment(CENTER);
+                String valStr = (value != null) ? value.toString() : "";
+                if (valStr.equalsIgnoreCase(ClientInfo.STATUS_ONLINE)) {
+                    setForeground(new Color(166, 227, 161));
+                    setText("● ONLINE");
+                } else {
+                    setForeground(new Color(147, 153, 178));
+                    setText("○ OFFLINE");
+                }
+                return c;
+            }
+        };
+        clientTable.getColumnModel().getColumn(5).setCellRenderer(statusRenderer);
+
+        // Sự kiện khi người dùng click chọn dòng trong bảng
+        clientTable.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                updateSelectedClientDisplay();
+            }
+        });
 
         JScrollPane scrollPane = new JScrollPane(clientTable);
         scrollPane.setBackground(new Color(49, 50, 68));
         scrollPane.getViewport().setBackground(new Color(49, 50, 68));
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
 
+        panel.add(selectedClientLabel, BorderLayout.NORTH);
         panel.add(scrollPane, BorderLayout.CENTER);
+        return panel;
+    }
+
+    private void updateSelectedClientDisplay() {
+        int selectedRow = clientTable.getSelectedRow();
+        if (selectedRow >= 0) {
+            String ip = (String) tableModel.getValueAt(selectedRow, 0);
+            String host = (String) tableModel.getValueAt(selectedRow, 1);
+            String status = (String) tableModel.getValueAt(selectedRow, 5);
+            selectedClientLabel.setText("🎯 Đang chọn: " + host + " (" + ip + ")  |  Trạng thái: " + status);
+            selectedClientLabel.setForeground(new Color(166, 227, 161));
+        } else {
+            selectedClientLabel.setText("🎯 Chưa chọn Client nào (Nhấn chọn một máy trong danh sách để điều khiển)");
+            selectedClientLabel.setForeground(new Color(249, 226, 175));
+        }
+    }
+
+    private JPanel buildExecutionLogPanel() {
+        JPanel panel = new JPanel(new BorderLayout(6, 6));
+        panel.setBackground(new Color(49, 50, 68));
+        panel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createTitledBorder(
+                        BorderFactory.createLineBorder(new Color(88, 91, 112)),
+                        "📋 Kết quả thực thi & Phản hồi từ Client (Real-time Execution Log)",
+                        TitledBorder.LEFT, TitledBorder.TOP,
+                        new Font("Segoe UI", Font.BOLD, 13),
+                        new Color(137, 180, 250)
+                ),
+                new EmptyBorder(4, 8, 8, 8)
+        ));
+        panel.setPreferredSize(new Dimension(0, 190));
+
+        logTextArea = new JTextArea();
+        logTextArea.setEditable(false);
+        logTextArea.setFont(new Font("Consolas", Font.PLAIN, 12));
+        logTextArea.setBackground(new Color(30, 30, 46));
+        logTextArea.setForeground(new Color(205, 214, 244));
+        logTextArea.setCaretColor(new Color(203, 166, 247));
+        logTextArea.setLineWrap(true);
+        logTextArea.setWrapStyleWord(true);
+        logTextArea.setName("logTextArea");
+
+        JScrollPane logScroll = new JScrollPane(logTextArea);
+        logScroll.setBorder(BorderFactory.createLineBorder(new Color(69, 71, 90)));
+        logScroll.setBackground(new Color(30, 30, 46));
+
+        // Thanh công cụ log
+        JPanel toolBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        toolBar.setOpaque(false);
+
+        JButton btnClearLog = new JButton("Xóa nhật ký");
+        btnClearLog.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        btnClearLog.setBackground(new Color(69, 71, 90));
+        btnClearLog.setForeground(new Color(205, 214, 244));
+        btnClearLog.setFocusPainted(false);
+        btnClearLog.setBorder(new EmptyBorder(4, 10, 4, 10));
+        btnClearLog.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        btnClearLog.addActionListener(e -> logTextArea.setText(""));
+
+        toolBar.add(btnClearLog);
+
+        panel.add(toolBar, BorderLayout.NORTH);
+        panel.add(logScroll, BorderLayout.CENTER);
+
         return panel;
     }
 
     private JPanel buildControlPanel() {
         JPanel panel = new JPanel(new GridLayout(8, 1, 0, 8));
         panel.setBackground(new Color(30, 30, 46));
-        panel.setPreferredSize(new Dimension(220, 0));
+        panel.setPreferredSize(new Dimension(230, 0));
 
         JLabel ctrlLabel = new JLabel("Điều khiển hệ thống", SwingConstants.CENTER);
         ctrlLabel.setFont(new Font("Segoe UI", Font.BOLD, 13));
         ctrlLabel.setForeground(new Color(137, 180, 250));
         panel.add(ctrlLabel);
 
-        // Các nút điều khiển Issue #33
+        // Các nút điều khiển theo yêu cầu Issue #34
         btnLock          = createControlButton("🔒  Khóa màn hình (LOCK)", "btnLock");
         btnLogoutClient  = createControlButton("🚪  Đăng xuất (LOGOUT)",    "btnLogoutClient");
         btnRestart       = createControlButton("🔄  Khởi động lại (RESTART)", "btnRestart");
@@ -172,7 +299,7 @@ public class DashboardFrame extends JFrame implements ClientManager.ClientEventL
         btnBlockWeb      = createControlButton("🚫  Chặn trang web",        "btnBlockWeb");
         btnSendMessage   = createControlButton("💬  Gửi tin nhắn",          "btnSendMessage");
 
-        // Gắn sự kiện cho các nút điều khiển
+        // Gắn sự kiện gửi lệnh từ Server UI tới Client
         btnLock.addActionListener(e -> sendCommandToClient(MessagePacket.CMD_LOCK));
         btnLogoutClient.addActionListener(e -> sendCommandToClient(MessagePacket.CMD_LOGOUT));
         btnRestart.addActionListener(e -> sendCommandToClient(MessagePacket.CMD_RESTART));
@@ -193,10 +320,10 @@ public class DashboardFrame extends JFrame implements ClientManager.ClientEventL
     private JPanel buildFooter() {
         JPanel footer = new JPanel(new FlowLayout(FlowLayout.LEFT));
         footer.setBackground(new Color(49, 50, 68));
-        footer.setBorder(new EmptyBorder(4, 12, 4, 12));
+        footer.setBorder(new EmptyBorder(6, 14, 6, 14));
 
-        JLabel statusLabel = new JLabel("Server đang lắng nghe  |  Cổng: 9999  |  Lệnh hỗ trợ: LOCK, LOGOUT, RESTART, SHUTDOWN");
-        statusLabel.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        statusLabel = new JLabel("Server đang lắng nghe  |  Cổng: 9999  |  Lệnh hỗ trợ: LOCK, LOGOUT, RESTART, SHUTDOWN");
+        statusLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         statusLabel.setForeground(new Color(147, 153, 178));
         footer.add(statusLabel);
         return footer;
@@ -226,40 +353,110 @@ public class DashboardFrame extends JFrame implements ClientManager.ClientEventL
     }
 
     /**
-     * Gửi lệnh hệ thống (LOCK, LOGOUT, RESTART, SHUTDOWN) tới Client được chọn
-     * hoặc Broadcast cho tất cả Client.
+     * Gửi lệnh điều khiển hệ thống (LOCK, LOGOUT, RESTART, SHUTDOWN) tới Client được chọn.
+     * Hiện thực hóa đúng quy trình Issue #34:
+     *   1. Chọn Client
+     *   2. Chọn Command
+     *   3. Tạo gói JSON (MessagePacket)
+     *   4. Gửi qua TCP Socket
+     *   5. Hiển thị thông báo gửi & chờ kết quả phản hồi
      */
     private void sendCommandToClient(String command) {
         int selectedRow = clientTable.getSelectedRow();
-        MessagePacket packet = MessagePacket.createCommand("ALL", command);
+        if (selectedRow < 0) {
+            JOptionPane.showMessageDialog(this,
+                    "Vui lòng chọn một Client trong bảng danh sách trước khi gửi lệnh [" + command + "]!",
+                    "Chưa chọn Client", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
 
-        if (selectedRow >= 0) {
-            String targetIp = (String) tableModel.getValueAt(selectedRow, 0);
-            packet.setTarget(targetIp);
-            boolean success = ClientManager.getInstance().sendTo(targetIp, packet);
-            if (success) {
-                JOptionPane.showMessageDialog(this,
-                        "Đã gửi thành công lệnh [" + command + "] tới Client " + targetIp,
-                        "Thực thi lệnh", JOptionPane.INFORMATION_MESSAGE);
-            } else {
-                JOptionPane.showMessageDialog(this,
-                        "Không thể gửi lệnh tới " + targetIp + " (Client offline)",
-                        "Lỗi gửi lệnh", JOptionPane.ERROR_MESSAGE);
+        String targetIp  = (String) tableModel.getValueAt(selectedRow, 0);
+        String hostName  = (String) tableModel.getValueAt(selectedRow, 1);
+        String status    = (String) tableModel.getValueAt(selectedRow, 5);
+
+        if (status != null && status.toUpperCase().contains("OFFLINE")) {
+            JOptionPane.showMessageDialog(this,
+                    "Client [" + hostName + " (" + targetIp + ")] đang OFFLINE!\nKhông thể gửi lệnh điều khiển.",
+                    "Client Offline", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        // Hộp thoại xác nhận gửi lệnh
+        int confirm = JOptionPane.showConfirmDialog(this,
+                "Bạn có chắc chắn muốn gửi lệnh [" + command + "] tới máy trạm:\n"
+                + "• Tên máy: " + hostName + "\n"
+                + "• Địa chỉ IP: " + targetIp + "?",
+                "Xác nhận gửi lệnh điều khiển",
+                JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
+
+        if (confirm != JOptionPane.YES_OPTION) {
+            return;
+        }
+
+        // Tạo gói tin JSON lệnh điều khiển (MessagePacket)
+        MessagePacket packet = MessagePacket.createCommand(targetIp, command);
+
+        // Gửi qua TCP Socket tới Client đã chọn
+        boolean success = ClientManager.getInstance().sendTo(targetIp, packet);
+
+        if (success) {
+            appendLog("📤 [GỬI LỆNH] Đã gửi lệnh [" + command + "] tới Client " + hostName + " (" + targetIp + "). Đang chờ phản hồi...");
+            if (statusLabel != null) {
+                statusLabel.setText("Đã gửi lệnh [" + command + "] tới " + hostName + "... Đang chờ phản hồi từ Client.");
             }
         } else {
-            // Không chọn dòng -> Phát sóng cho tất cả các máy online
-            int confirm = JOptionPane.showConfirmDialog(this,
-                    "Bạn chưa chọn Client cụ thể. Bạn có muốn PHÁT SÓNG lệnh [" + command + "] tới TOÀN BỘ máy đang kết nối không?",
-                    "Xác nhận Phát sóng Lệnh",
-                    JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
-
-            if (confirm == JOptionPane.YES_OPTION) {
-                ClientManager.getInstance().broadcast(packet);
-                JOptionPane.showMessageDialog(this,
-                        "Đã phát sóng lệnh [" + command + "] tới tất cả Client đang online!",
-                        "Phát sóng thành công", JOptionPane.INFORMATION_MESSAGE);
+            appendLog("⚠️ [LỖI GỬI] Không thể gửi lệnh [" + command + "] tới Client " + hostName + " (" + targetIp + ") do mất kết nối Socket!");
+            if (statusLabel != null) {
+                statusLabel.setText("Lỗi gửi lệnh tới " + targetIp);
             }
+            JOptionPane.showMessageDialog(this,
+                    "Không thể gửi lệnh tới Client " + hostName + " (" + targetIp + ")!\nClient có thể đã mất kết nối hoặc ngắt mạng.",
+                    "Lỗi gửi lệnh", JOptionPane.ERROR_MESSAGE);
         }
+    }
+
+    /**
+     * Nhận phản hồi kết quả (ACK) hoặc lỗi (ERROR) từ Client gửi về qua Socket (Issue #34).
+     */
+    @Override
+    public void onCommandResponse(String clientIp, String type, String message) {
+        SwingUtilities.invokeLater(() -> {
+            ClientInfo info = ClientManager.getInstance().getClientInfo(clientIp);
+            String clientName = (info != null && info.getHostName() != null) ? info.getHostName() : clientIp;
+
+            if (MessagePacket.TYPE_ACK.equalsIgnoreCase(type)) {
+                // Hiển thị kết quả thành công
+                appendLog("✅ [KẾT QUẢ THÀNH CÔNG] từ Client " + clientName + " (" + clientIp + "): " + message);
+                if (statusLabel != null) {
+                    statusLabel.setText("✅ Client " + clientName + " thực thi thành công!");
+                }
+                JOptionPane.showMessageDialog(this,
+                        "Client [" + clientName + " (" + clientIp + ")] đã thực thi THÀNH CÔNG:\n" + message,
+                        "Kết quả thực thi lệnh", JOptionPane.INFORMATION_MESSAGE);
+            } else if (MessagePacket.TYPE_ERROR.equalsIgnoreCase(type)) {
+                // Hiển thị thông báo lỗi
+                appendLog("❌ [KẾT QUẢ LỖI] từ Client " + clientName + " (" + clientIp + "): " + message);
+                if (statusLabel != null) {
+                    statusLabel.setText("❌ Client " + clientName + " báo lỗi khi thực thi!");
+                }
+                JOptionPane.showMessageDialog(this,
+                        "Client [" + clientName + " (" + clientIp + ")] báo LỖI:\n" + message,
+                        "Lỗi thực thi lệnh", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+    }
+
+    /**
+     * Ghi log ra khung hiển thị kết quả điều khiển (Real-time Execution Log).
+     */
+    public void appendLog(String message) {
+        SwingUtilities.invokeLater(() -> {
+            if (logTextArea != null) {
+                String time = LocalTime.now().format(TIME_FORMATTER);
+                logTextArea.append("[" + time + "] " + message + "\n");
+                logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+            }
+        });
     }
 
     private void sendChatMessage() {
@@ -267,6 +464,7 @@ public class DashboardFrame extends JFrame implements ClientManager.ClientEventL
         if (msg != null && !msg.isBlank()) {
             MessagePacket chatPacket = MessagePacket.createChat("SERVER", "ALL", msg.trim());
             ClientManager.getInstance().broadcast(chatPacket);
+            appendLog("💬 [CHAT] Đã gửi tin nhắn broadcast: \"" + msg.trim() + "\"");
             JOptionPane.showMessageDialog(this, "Đã gửi tin nhắn chat tới toàn bộ Client!");
         }
     }
@@ -285,6 +483,7 @@ public class DashboardFrame extends JFrame implements ClientManager.ClientEventL
                         info.getStatus()
                 });
             }
+            updateSelectedClientDisplay();
         });
     }
 
@@ -299,6 +498,7 @@ public class DashboardFrame extends JFrame implements ClientManager.ClientEventL
 
         if (confirm == JOptionPane.YES_OPTION) {
             ClientManager.getInstance().removeListener(this);
+            ClientManager.getInstance().removeCommandListener(this);
             SwingUtilities.invokeLater(() -> {
                 LoginFrame loginFrame = new LoginFrame();
                 loginFrame.setVisible(true);
@@ -331,7 +531,17 @@ public class DashboardFrame extends JFrame implements ClientManager.ClientEventL
     }
 
     // Listener Callbacks
-    @Override public void onClientConnected(ClientInfo clientInfo) { refreshClientTable(); }
-    @Override public void onClientDisconnected(String clientIp) { refreshClientTable(); }
-    @Override public void onClientUpdated(ClientInfo clientInfo) { refreshClientTable(); }
+    @Override public void onClientConnected(ClientInfo clientInfo) {
+        appendLog("🔗 [KẾT NỐI] Client mới kết nối: " + clientInfo.getHostName() + " (" + clientInfo.getIpAddress() + ")");
+        refreshClientTable();
+    }
+
+    @Override public void onClientDisconnected(String clientIp) {
+        appendLog("🔌 [NGẮT KẾT NỐI] Client đã ngắt kết nối: " + clientIp);
+        refreshClientTable();
+    }
+
+    @Override public void onClientUpdated(ClientInfo clientInfo) {
+        refreshClientTable();
+    }
 }

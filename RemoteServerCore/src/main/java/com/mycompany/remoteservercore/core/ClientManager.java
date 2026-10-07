@@ -20,11 +20,16 @@ public class ClientManager {
         void onClientUpdated(ClientInfo clientInfo);
     }
 
+    public interface CommandResponseListener {
+        void onCommandResponse(String clientIp, String type, String message);
+    }
+
     private static final ClientManager INSTANCE = new ClientManager();
 
     private final Map<String, ClientHandler> activeHandlers = new ConcurrentHashMap<>();
     private final Map<String, ClientInfo> clientInfoMap = new ConcurrentHashMap<>();
     private final List<ClientEventListener> listeners = new CopyOnWriteArrayList<>();
+    private final List<CommandResponseListener> commandListeners = new CopyOnWriteArrayList<>();
 
     private ClientManager() {
     }
@@ -140,5 +145,23 @@ public class ClientManager {
 
     public void removeListener(ClientEventListener listener) {
         listeners.remove(listener);
+    }
+
+    public void addCommandListener(CommandResponseListener listener) {
+        commandListeners.add(listener);
+    }
+
+    public void removeCommandListener(CommandResponseListener listener) {
+        commandListeners.remove(listener);
+    }
+
+    public void notifyCommandResponse(String clientIp, String type, String message) {
+        for (CommandResponseListener listener : commandListeners) {
+            try {
+                listener.onCommandResponse(clientIp, type, message);
+            } catch (Exception e) {
+                System.err.println("[ClientManager] Loi callback command listener: " + e.getMessage());
+            }
+        }
     }
 }
