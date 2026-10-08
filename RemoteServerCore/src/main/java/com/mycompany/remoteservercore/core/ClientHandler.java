@@ -20,21 +20,30 @@ import java.nio.charset.StandardCharsets;
  */
 public class ClientHandler implements Runnable {
     private final Socket socket;
-    private final String clientIp;
+    private String clientIp;
     private BufferedReader reader;
     private BufferedWriter writer;
     private volatile boolean running = true;
     private PacketRouter packetRouter;
 
     public ClientHandler(Socket socket) {
-        this.socket = socket;
-        this.clientIp = (socket.getInetAddress() != null) ? socket.getInetAddress().getHostAddress() : "UNKNOWN";
-        this.packetRouter = PacketRouter.getInstance();
+        this(socket, PacketRouter.getInstance());
     }
 
     public ClientHandler(Socket socket, PacketRouter packetRouter) {
         this.socket = socket;
-        this.clientIp = (socket.getInetAddress() != null) ? socket.getInetAddress().getHostAddress() : "UNKNOWN";
+        String baseIp = (socket.getInetAddress() != null) ? socket.getInetAddress().getHostAddress() : "UNKNOWN";
+        if (ClientManager.getInstance().hasActiveClient(baseIp)) {
+            this.clientIp = baseIp + ":" + socket.getPort();
+        } else {
+            this.clientIp = baseIp;
+        }
+        this.packetRouter = packetRouter;
+    }
+
+    public ClientHandler(Socket socket, PacketRouter packetRouter, String clientIp) {
+        this.socket = socket;
+        this.clientIp = clientIp;
         this.packetRouter = packetRouter;
     }
 
@@ -87,10 +96,10 @@ public class ClientHandler implements Runnable {
                 } catch (Exception ignored) {}
             }
         } finally {
+            close();
             try {
                 LogDAO.saveLog(new LogEntry(clientIp, "Client Disconnect", "Client disconnected from server"));
             } catch (Exception ignored) {}
-            close();
         }
     }
 
@@ -169,6 +178,15 @@ public class ClientHandler implements Runnable {
 
     public String getClientIp() {
         return clientIp;
+    }
+
+    public void setClientIp(String newIp) {
+        if (newIp == null || newIp.trim().isEmpty() || newIp.equals(this.clientIp)) {
+            return;
+        }
+        String oldIp = this.clientIp;
+        this.clientIp = newIp;
+        ClientManager.getInstance().updateClientIp(oldIp, newIp, this);
     }
 
     public boolean isRunning() {

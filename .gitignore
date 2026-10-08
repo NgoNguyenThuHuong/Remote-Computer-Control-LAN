@@ -1,5 +1,7 @@
 /RemoteServerCore/target/
 *.db
+*.db-shm
+*.db-wal
 .vscode/
 config.properties
 *.properties.local

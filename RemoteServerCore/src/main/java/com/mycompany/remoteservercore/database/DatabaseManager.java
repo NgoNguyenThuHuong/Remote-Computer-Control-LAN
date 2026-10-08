@@ -31,8 +31,13 @@ public class DatabaseManager {
 
     /** Khởi tạo DB: tạo bảng users & logs + seed nếu cần. Gọi một lần khi ứng dụng khởi động. */
     public static synchronized void initialize() {
-        try (Connection conn = DriverManager.getConnection(DB_URL)) {
+        try (Connection conn = DriverManager.getConnection(DB_URL);
+             Statement pragmaStmt = conn.createStatement()) {
             System.out.println("[DB] Kết nối SQLite thành công: " + DB_PATH);
+            try {
+                pragmaStmt.execute("PRAGMA journal_mode = WAL;");
+                pragmaStmt.execute("PRAGMA busy_timeout = 5000;");
+            } catch (Exception ignored) {}
             createUsersTable(conn);
             createLogsTable(conn);
             seedDefaultUsers(conn);
@@ -59,7 +64,11 @@ public class DatabaseManager {
                 }
             }
         }
-        return DriverManager.getConnection(DB_URL);
+        Connection conn = DriverManager.getConnection(DB_URL);
+        try (Statement s = conn.createStatement()) {
+            s.execute("PRAGMA busy_timeout = 5000;");
+        } catch (Exception ignored) {}
+        return conn;
     }
 
     /** Đóng kết nối khi tắt ứng dụng (tương thích ngược). */

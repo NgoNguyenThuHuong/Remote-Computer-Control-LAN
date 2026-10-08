@@ -55,7 +55,12 @@ public class MainServer {
             ClientInfo info = JsonUtils.fromJson(packet.getPayload(), ClientInfo.class);
             if (info != null) {
                 if (sender != null) {
-                    info.setIpAddress(sender.getClientIp());
+                    if (info.getIpAddress() != null && !info.getIpAddress().trim().isEmpty()
+                            && !info.getIpAddress().equals("127.0.0.1") && !info.getIpAddress().equalsIgnoreCase("localhost")) {
+                        sender.setClientIp(info.getIpAddress());
+                    } else {
+                        info.setIpAddress(sender.getClientIp());
+                    }
                 }
                 ClientManager.getInstance().updateClientInfo(info);
                 System.out.println("[MainServer] Đã cập nhật ClientInfo: " + info.getHostName() + " (" + info.getIpAddress() + ") - CPU: " + info.getCpuUsage() + "%, RAM: " + info.getFormattedRam());

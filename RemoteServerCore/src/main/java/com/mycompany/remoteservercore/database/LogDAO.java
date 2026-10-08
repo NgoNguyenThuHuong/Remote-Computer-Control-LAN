@@ -14,18 +14,39 @@ import java.util.List;
 
 public class LogDAO {
 
-    public static void saveLog(LogEntry log) {
+    private static Connection writeConn = null;
+
+    private static Connection getWriteConnection() throws SQLException {
+        if (writeConn == null || writeConn.isClosed()) {
+            writeConn = DatabaseManager.getConnection();
+        }
+        return writeConn;
+    }
+
+    public static synchronized void saveLog(LogEntry log) {
         String sql = "INSERT INTO logs (client_ip, event_type, description) VALUES (?, ?, ?)";
-        try (Connection conn = DatabaseManager.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            
-            pstmt.setString(1, log.getClientIp());
-            pstmt.setString(2, log.getEventType());
-            pstmt.setString(3, log.getDescription());
-            pstmt.executeUpdate();
-            
+        try {
+            Connection conn = getWriteConnection();
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, log.getClientIp());
+                pstmt.setString(2, log.getEventType());
+                pstmt.setString(3, log.getDescription());
+                pstmt.executeUpdate();
+            }
         } catch (SQLException e) {
             System.err.println("[LogDAO] Error saving log: " + e.getMessage());
+            try {
+                writeConn = null;
+                Connection conn = getWriteConnection();
+                try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                    pstmt.setString(1, log.getClientIp());
+                    pstmt.setString(2, log.getEventType());
+                    pstmt.setString(3, log.getDescription());
+                    pstmt.executeUpdate();
+                }
+            } catch (SQLException retryEx) {
+                System.err.println("[LogDAO] Retry failed: " + retryEx.getMessage());
+            }
         }
     }
 

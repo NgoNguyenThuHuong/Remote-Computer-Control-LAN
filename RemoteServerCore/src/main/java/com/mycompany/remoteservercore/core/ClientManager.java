@@ -94,9 +94,40 @@ public class ClientManager {
         System.out.println("[ClientManager] Da them Client vao danh sach quan ly: " + ip + " (Tong so: " + activeHandlers.size() + ")");
     }
 
-    /**
-     * Hủy đăng ký ClientHandler. Chỉ xóa khi handler hiện tại chính là handler ngắt kết nối.
-     */
+    public boolean hasActiveClient(String ip) {
+        if (ip == null) return false;
+        ClientHandler handler = activeHandlers.get(ip);
+        if (handler == null) return false;
+        if (!handler.isRunning() || handler.getSocket() == null || handler.getSocket().isClosed()) {
+            activeHandlers.remove(ip, handler);
+            return false;
+        }
+        return true;
+    }
+
+    public synchronized void updateClientIp(String oldIp, String newIp, ClientHandler handler) {
+        if (oldIp != null) {
+            activeHandlers.remove(oldIp, handler);
+            ClientInfo oldInfo = clientInfoMap.remove(oldIp);
+            if (oldInfo != null) {
+                oldInfo.setIpAddress(newIp);
+                clientInfoMap.put(newIp, oldInfo);
+            }
+        }
+        activeHandlers.put(newIp, handler);
+        System.out.println("[ClientManager] Cap nhat IP Client tu " + oldIp + " -> " + newIp);
+    }
+
+    public synchronized void clearAllClients() {
+        for (ClientHandler handler : activeHandlers.values()) {
+            try {
+                handler.close();
+            } catch (Exception ignored) {}
+        }
+        activeHandlers.clear();
+        clientInfoMap.clear();
+    }
+
     public void unregisterClient(ClientHandler handler) {
         if (handler == null) {
             return;
@@ -156,7 +187,20 @@ public class ClientManager {
     }
 
     public boolean sendTo(String ip, MessagePacket packet) {
+        if (ip == null) return false;
         ClientHandler handler = activeHandlers.get(ip);
+        if (handler == null || !handler.isRunning()) {
+            for (Map.Entry<String, ClientHandler> entry : activeHandlers.entrySet()) {
+                if (entry.getKey().startsWith(ip + ":") || (entry.getValue().getSocket() != null
+                        && entry.getValue().getSocket().getInetAddress() != null
+                        && entry.getValue().getSocket().getInetAddress().getHostAddress().equals(ip))) {
+                    if (entry.getValue().isRunning()) {
+                        handler = entry.getValue();
+                        break;
+                    }
+                }
+            }
+        }
         if (handler != null && handler.isRunning()) {
             return handler.sendPacket(packet);
         }
@@ -177,7 +221,16 @@ public class ClientManager {
     }
 
     public ClientInfo getClientInfo(String ip) {
-        return clientInfoMap.get(ip);
+        if (ip == null) return null;
+        ClientInfo info = clientInfoMap.get(ip);
+        if (info == null) {
+            for (Map.Entry<String, ClientInfo> entry : clientInfoMap.entrySet()) {
+                if (entry.getKey().startsWith(ip + ":")) {
+                    return entry.getValue();
+                }
+            }
+        }
+        return info;
     }
 
     public int getOnlineCount() {
