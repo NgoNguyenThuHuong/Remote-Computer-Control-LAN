@@ -231,14 +231,19 @@ public class TestClient {
     }
 
     public static void main(String[] args) {
-        String serverIP = "127.0.0.1";
+        String serverIP = (args.length > 0 && !args[0].isEmpty()) ? args[0] : "127.0.0.1";
         int port = 9999;
+        if (args.length > 1) {
+            try {
+                port = Integer.parseInt(args[1]);
+            } catch (NumberFormatException e) {
+                System.err.println("[CẢNH BÁO] Cổng không hợp lệ, dùng mặc định 9999");
+            }
+        }
+        boolean safeMode = (args.length > 2) ? Boolean.parseBoolean(args[2]) : true;
 
-        // Bật Safe Mode = true để thử nghiệm an toàn trên NetBeans (không thực sự tắt máy khi test)
-        boolean safeMode = true;
-
-        System.out.println("=== BẮT ĐẦU CHẠY CLIENT AGENT (KIỂM THỬ ISSUE #33 & ISSUE #35) ===");
-        System.out.println("[CHÚ Ý] Safe Mode đang BẬT. Cửa sổ Chat nội bộ phía Client đang khởi động...");
+        System.out.println("=== BẮT ĐẦU CHẠY CLIENT AGENT ===");
+        System.out.println("-> Kết nối tới Server: " + serverIP + ":" + port + " (SafeMode: " + safeMode + ")");
 
         runClient("CLIENT-MAY-01", serverIP, port, safeMode, true);
     }
