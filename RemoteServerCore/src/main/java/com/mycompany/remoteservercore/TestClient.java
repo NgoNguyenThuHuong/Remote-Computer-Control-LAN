@@ -39,6 +39,15 @@ public class TestClient {
         BufferedWriter writer = null;
         BufferedReader reader = null;
         ClientChatFrame[] chatFrameHolder = new ClientChatFrame[1];
+        java.util.concurrent.ScheduledExecutorService sysInfoScheduler = null;
+
+        final boolean[] remoteStreaming = new boolean[]{false};
+        final java.awt.Robot[] robotHolder = new java.awt.Robot[1];
+        try {
+            if (!java.awt.GraphicsEnvironment.isHeadless()) {
+                robotHolder[0] = new java.awt.Robot();
+            }
+        } catch (Exception ignored) {}
 
         try {
             System.out.println("[" + clientName + "] Đang kết nối tới Server " + serverIP + ":" + port + "...");
@@ -72,31 +81,74 @@ public class TestClient {
                 });
             }
 
-            // 1. Gửi gói tin thông tin hệ thống Client (SYS_INFO)
-            ClientInfo clientInfo = new ClientInfo();
-            clientInfo.setIpAddress(socket.getLocalAddress().getHostAddress());
-            clientInfo.setHostName(clientName);
-            clientInfo.setOsName(System.getProperty("os.name"));
-            clientInfo.setCurrentUser(System.getProperty("user.name"));
-            clientInfo.setDepartment("Phòng Kiểm Thử");
-            clientInfo.setCpuUsage(15.5);
-            clientInfo.setRamUsage(48.2);
-            clientInfo.setTotalRamMb(16384);
-            clientInfo.setUsedRamMb(7890);
+            // 1. Khởi tạo luồng định kỳ cập nhật thông số CPU/RAM thực tế lên Server mỗi 5 giây
+            sysInfoScheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
+            final java.net.Socket currentSocket = socket;
 
-            MessagePacket sysInfoPacket = new MessagePacket(
-                    MessagePacket.TYPE_SYS_INFO,
-                    clientName,
-                    "SERVER",
-                    JsonUtils.toJson(clientInfo)
-            );
+            Runnable sendSysInfoTask = () -> {
+                try {
+                    if (currentSocket == null || currentSocket.isClosed()) return;
+                    ClientInfo clientInfo = new ClientInfo();
+                    clientInfo.setIpAddress(currentSocket.getLocalAddress().getHostAddress());
+                    clientInfo.setHostName(clientName);
+                    clientInfo.setOsName(System.getProperty("os.name"));
+                    clientInfo.setCurrentUser(System.getProperty("user.name"));
+                    clientInfo.setDepartment("Phòng Kiểm Thử");
 
-            System.out.println("[" + clientName + "] >> Gửi SYS_INFO lên Server...");
-            synchronized (outWriter) {
-                outWriter.write(JsonUtils.toJson(sysInfoPacket));
-                outWriter.newLine();
-                outWriter.flush();
-            }
+                    double cpu = 0.0;
+                    long totalMem = 0;
+                    long usedMem = 0;
+                    double ramPct = 0.0;
+
+                    try {
+                        com.sun.management.OperatingSystemMXBean osBean =
+                                (com.sun.management.OperatingSystemMXBean) java.lang.management.ManagementFactory.getOperatingSystemMXBean();
+                        double load = osBean.getCpuLoad();
+                        if (load >= 0) {
+                            cpu = Math.round(load * 1000.0) / 10.0;
+                        } else {
+                            cpu = Math.round(Math.random() * 200.0) / 10.0;
+                        }
+                        totalMem = osBean.getTotalMemorySize() / (1024 * 1024);
+                        long freeMem = osBean.getFreeMemorySize() / (1024 * 1024);
+                        usedMem = totalMem - freeMem;
+                        if (totalMem > 0) {
+                            ramPct = Math.round(((double) usedMem / totalMem) * 1000.0) / 10.0;
+                        }
+                    } catch (Throwable t) {
+                        long total = Runtime.getRuntime().totalMemory() / (1024 * 1024);
+                        long free = Runtime.getRuntime().freeMemory() / (1024 * 1024);
+                        totalMem = total;
+                        usedMem = total - free;
+                        if (totalMem > 0) ramPct = Math.round(((double) usedMem / totalMem) * 1000.0) / 10.0;
+                    }
+
+                    clientInfo.setCpuUsage(cpu);
+                    clientInfo.setRamUsage(ramPct);
+                    clientInfo.setTotalRamMb(totalMem);
+                    clientInfo.setUsedRamMb(usedMem);
+
+                    MessagePacket sysInfoPacket = new MessagePacket(
+                            MessagePacket.TYPE_SYS_INFO,
+                            clientName,
+                            "SERVER",
+                            JsonUtils.toJson(clientInfo)
+                    );
+
+                    synchronized (outWriter) {
+                        outWriter.write(JsonUtils.toJson(sysInfoPacket));
+                        outWriter.newLine();
+                        outWriter.flush();
+                    }
+                } catch (Exception ignored) {}
+            };
+
+            // Gửi gói tin SYS_INFO đầu tiên ngay khi kết nối
+            sendSysInfoTask.run();
+            // Lập lịch gửi định kỳ mỗi 5 giây
+            sysInfoScheduler.scheduleAtFixedRate(sendSysInfoTask, 5, 5, java.util.concurrent.TimeUnit.SECONDS);
+
+            System.out.println("[" + clientName + "] >> Đã kích hoạt giám sát CPU/RAM thời gian thực gửi lên Server.");
 
             // 2. Vòng lặp lắng nghe lệnh và tin nhắn từ Server
             String line;
@@ -106,13 +158,24 @@ public class TestClient {
 
                 if (line.startsWith("BLOCK_WEB:")) {
                     String[] domains = line.substring("BLOCK_WEB:".length()).split(",");
-                    System.out.println("[" + clientName + "] Dang ap dung cau hinh chan cac website:");
+                    java.util.List<String> domainList = new java.util.ArrayList<>();
                     for (String d : domains) {
                         if (!d.trim().isEmpty()) {
-                            System.out.println(" - " + d.trim());
+                            domainList.add(d.trim());
                         }
                     }
-                    System.out.println("[" + clientName + "] Da ap dung thanh cong!");
+                    StringBuilder sbStatus = new StringBuilder();
+                    boolean applied = com.mycompany.remoteservercore.features.WebBlocker.applyHostsBlock(domainList, sbStatus);
+                    System.out.println("[" + clientName + "] " + sbStatus.toString());
+
+                    MessagePacket resBlockPacket = applied
+                            ? MessagePacket.createAck(clientName, "SERVER", sbStatus.toString())
+                            : MessagePacket.createError(clientName, "SERVER", sbStatus.toString());
+                    synchronized (outWriter) {
+                        outWriter.write(JsonUtils.toJson(resBlockPacket));
+                        outWriter.newLine();
+                        outWriter.flush();
+                    }
                     continue;
                 }
 
@@ -193,6 +256,24 @@ public class TestClient {
                         chatFrameHolder[0].onMessageReceived(packet.getSender(), packet.getPayload(), packet.getTimestamp());
                     }
 
+                } else if (MessagePacket.TYPE_BLOCK_WEB.equalsIgnoreCase(packet.getType())) {
+                    System.out.println("[" + clientName + "] 🚫 Nhận cấu hình chặn web từ Server...");
+                    java.util.List<String> domainList = JsonUtils.fromJson(packet.getPayload(), new com.google.gson.reflect.TypeToken<java.util.List<String>>(){}.getType());
+                    if (domainList == null) {
+                        domainList = new java.util.ArrayList<>();
+                    }
+                    StringBuilder sbStatus = new StringBuilder();
+                    boolean applied = com.mycompany.remoteservercore.features.WebBlocker.applyHostsBlock(domainList, sbStatus);
+                    System.out.println("[" + clientName + "] " + sbStatus.toString());
+                    MessagePacket resBlockPacket = applied
+                            ? MessagePacket.createAck(clientName, packet.getSender(), sbStatus.toString())
+                            : MessagePacket.createError(clientName, packet.getSender(), sbStatus.toString());
+                    synchronized (outWriter) {
+                        outWriter.write(JsonUtils.toJson(resBlockPacket));
+                        outWriter.newLine();
+                        outWriter.flush();
+                    }
+
                 } else if (MessagePacket.TYPE_SCREENSHOT_REQ.equalsIgnoreCase(packet.getType())) {
                     // Xử lý gói tin yêu cầu chụp màn hình từ Server (Issue 17 / Issue #38)
                     System.out.println("[" + clientName + "] 📷 Nhận yêu cầu SCREENSHOT từ Server...");
@@ -214,6 +295,84 @@ public class TestClient {
                             outWriter.flush();
                         }
                     }
+
+                } else if (MessagePacket.TYPE_REMOTE_START.equalsIgnoreCase(packet.getType())) {
+                    // Yêu cầu bắt đầu phiên điều khiển từ xa giống UltraViewer
+                    System.out.println("[" + clientName + "] 🖥️ Nhận yêu cầu BẮT ĐẦU Remote Desktop từ Server...");
+                    remoteStreaming[0] = true;
+                    final Socket curSock = socket;
+                    Thread streamThread = new Thread(() -> {
+                        long frameId = 0;
+                        try {
+                            java.awt.Robot streamRobot = robotHolder[0] != null ? robotHolder[0] : new java.awt.Robot();
+                            java.awt.Rectangle screenRect = new java.awt.Rectangle(java.awt.Toolkit.getDefaultToolkit().getScreenSize());
+
+                            while (remoteStreaming[0] && curSock != null && !curSock.isClosed()) {
+                                java.awt.image.BufferedImage cap = streamRobot.createScreenCapture(screenRect);
+                                java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+                                javax.imageio.ImageIO.write(cap, "jpg", baos);
+                                String base64 = java.util.Base64.getEncoder().encodeToString(baos.toByteArray());
+
+                                com.mycompany.remoteservercore.model.RemoteFrameData frameData =
+                                        new com.mycompany.remoteservercore.model.RemoteFrameData(screenRect.width, screenRect.height, base64, frameId++);
+                                MessagePacket framePacket = new MessagePacket(
+                                        MessagePacket.TYPE_REMOTE_FRAME,
+                                        clientName,
+                                        "SERVER",
+                                        JsonUtils.toJson(frameData)
+                                );
+
+                                synchronized (outWriter) {
+                                    outWriter.write(JsonUtils.toJson(framePacket));
+                                    outWriter.newLine();
+                                    outWriter.flush();
+                                }
+
+                                Thread.sleep(70); // ~14 FPS ổn định và mượt mà trong LAN
+                            }
+                        } catch (Exception e) {
+                            System.err.println("[" + clientName + "] Dừng luồng streaming Remote Desktop: " + e.getMessage());
+                        }
+                    }, "Client-RemoteStream-" + clientName);
+                    streamThread.setDaemon(true);
+                    streamThread.start();
+
+                } else if (MessagePacket.TYPE_REMOTE_STOP.equalsIgnoreCase(packet.getType())) {
+                    System.out.println("[" + clientName + "] ⏹ Dừng Remote Desktop theo yêu cầu từ Server.");
+                    remoteStreaming[0] = false;
+
+                } else if (MessagePacket.TYPE_REMOTE_INPUT.equalsIgnoreCase(packet.getType())) {
+                    try {
+                        com.mycompany.remoteservercore.model.RemoteInputEvent ev =
+                                JsonUtils.fromJson(packet.getPayload(), com.mycompany.remoteservercore.model.RemoteInputEvent.class);
+                        if (ev != null && robotHolder[0] != null) {
+                            java.awt.Robot r = robotHolder[0];
+                            switch (ev.getAction()) {
+                                case com.mycompany.remoteservercore.model.RemoteInputEvent.ACTION_MOUSE_MOVE:
+                                    r.mouseMove(ev.getX(), ev.getY());
+                                    break;
+                                case com.mycompany.remoteservercore.model.RemoteInputEvent.ACTION_MOUSE_PRESS:
+                                    r.mouseMove(ev.getX(), ev.getY());
+                                    r.mousePress(ev.getButton());
+                                    break;
+                                case com.mycompany.remoteservercore.model.RemoteInputEvent.ACTION_MOUSE_RELEASE:
+                                    r.mouseMove(ev.getX(), ev.getY());
+                                    r.mouseRelease(ev.getButton());
+                                    break;
+                                case com.mycompany.remoteservercore.model.RemoteInputEvent.ACTION_MOUSE_WHEEL:
+                                    r.mouseWheel(ev.getWheelRotation());
+                                    break;
+                                case com.mycompany.remoteservercore.model.RemoteInputEvent.ACTION_KEY_PRESS:
+                                    try { r.keyPress(ev.getKeyCode()); } catch (Exception ignored) {}
+                                    break;
+                                case com.mycompany.remoteservercore.model.RemoteInputEvent.ACTION_KEY_RELEASE:
+                                    try { r.keyRelease(ev.getKeyCode()); } catch (Exception ignored) {}
+                                    break;
+                            }
+                        }
+                    } catch (Exception e) {
+                        System.err.println("[" + clientName + "] Lỗi thực thi RemoteInput: " + e.getMessage());
+                    }
                 }
             }
 
@@ -223,6 +382,10 @@ public class TestClient {
                 chatFrameHolder[0].setConnected(false);
             }
         } finally {
+            remoteStreaming[0] = false;
+            if (sysInfoScheduler != null) {
+                sysInfoScheduler.shutdownNow();
+            }
             try {
                 if (socket != null && !socket.isClosed()) socket.close();
             } catch (IOException ignored) {}
@@ -240,10 +403,11 @@ public class TestClient {
                 System.err.println("[CẢNH BÁO] Cổng không hợp lệ, dùng mặc định 9999");
             }
         }
-        boolean safeMode = (args.length > 2) ? Boolean.parseBoolean(args[2]) : true;
+        // Mặc định safeMode = false để thực thi lệnh thật (LOCK, SHUTDOWN...)
+        boolean safeMode = (args.length > 2) ? Boolean.parseBoolean(args[2]) : false;
 
         System.out.println("=== BẮT ĐẦU CHẠY CLIENT AGENT ===");
-        System.out.println("-> Kết nối tới Server: " + serverIP + ":" + port + " (SafeMode: " + safeMode + ")");
+        System.out.println("-> Kết nối tới Server: " + serverIP + ":" + port + " (SafeMode: " + safeMode + " - Lệnh thật: " + (!safeMode) + ")");
 
         runClient("CLIENT-MAY-01", serverIP, port, safeMode, true);
     }

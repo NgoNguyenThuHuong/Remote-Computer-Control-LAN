@@ -79,8 +79,12 @@ public class BlockedWebFrame extends JFrame {
         btnApply.addActionListener(e -> {
             String configCmd = webBlocker.generateConfigCommand();
             System.out.println("[Server] Broadcasting config to clients: " + configCmd);
+            // Gửi cả định dạng thô và gói tin JSON MessagePacket để tương thích mọi phiên bản client
             com.mycompany.remoteservercore.core.ClientManager.broadcast(configCmd);
-            JOptionPane.showMessageDialog(this, "Đã gửi cấu hình xuống Client:\n" + configCmd);
+            com.mycompany.remoteservercore.model.MessagePacket packet = 
+                com.mycompany.remoteservercore.model.MessagePacket.createBlockWebUpdate("ALL", com.mycompany.remoteservercore.protocol.JsonUtils.toJson(webBlocker.getBlockedWebsites()));
+            com.mycompany.remoteservercore.core.ClientManager.getInstance().broadcast(packet);
+            JOptionPane.showMessageDialog(this, "Đã gửi cấu hình chặn " + webBlocker.getBlockedWebsites().size() + " website xuống các máy Client:\n" + configCmd);
             logAction("Gửi cấu hình chặn web đến tất cả Client.");
         });
     }

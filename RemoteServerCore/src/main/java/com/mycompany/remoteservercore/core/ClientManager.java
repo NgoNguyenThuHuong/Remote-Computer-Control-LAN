@@ -32,6 +32,10 @@ public class ClientManager {
         void onScreenshotReceived(String clientIp, String base64Image);
     }
 
+    public interface RemoteFrameListener {
+        void onRemoteFrameReceived(String clientIp, com.mycompany.remoteservercore.model.RemoteFrameData frameData);
+    }
+
     private static final ClientManager INSTANCE = new ClientManager();
 
     private final Map<String, ClientHandler> activeHandlers = new ConcurrentHashMap<>();
@@ -40,6 +44,7 @@ public class ClientManager {
     private final List<CommandResponseListener> commandListeners = new CopyOnWriteArrayList<>();
     private final List<ChatMessageListener> chatListeners = new CopyOnWriteArrayList<>();
     private final List<ScreenshotListener> screenshotListeners = new CopyOnWriteArrayList<>();
+    private final List<RemoteFrameListener> remoteFrameListeners = new CopyOnWriteArrayList<>();
 
     private ClientManager() {
     }
@@ -295,6 +300,24 @@ public class ClientManager {
                 listener.onScreenshotReceived(clientIp, base64Image);
             } catch (Exception e) {
                 System.err.println("[ClientManager] Loi callback screenshot listener: " + e.getMessage());
+            }
+        }
+    }
+
+    public void addRemoteFrameListener(RemoteFrameListener listener) {
+        remoteFrameListeners.add(listener);
+    }
+
+    public void removeRemoteFrameListener(RemoteFrameListener listener) {
+        remoteFrameListeners.remove(listener);
+    }
+
+    public void notifyRemoteFrameReceived(String clientIp, com.mycompany.remoteservercore.model.RemoteFrameData frameData) {
+        for (RemoteFrameListener listener : remoteFrameListeners) {
+            try {
+                listener.onRemoteFrameReceived(clientIp, frameData);
+            } catch (Exception e) {
+                System.err.println("[ClientManager] Loi callback remote frame listener: " + e.getMessage());
             }
         }
     }

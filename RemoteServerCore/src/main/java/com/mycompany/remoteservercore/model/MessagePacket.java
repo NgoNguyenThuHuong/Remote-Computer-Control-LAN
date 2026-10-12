@@ -20,6 +20,12 @@ public class MessagePacket implements Serializable {
     public static final String TYPE_ACK = "ACK";
     public static final String TYPE_ERROR = "ERROR";
 
+    // Các loại gói tin điều khiển từ xa giống UltraViewer (Remote Desktop)
+    public static final String TYPE_REMOTE_START = "REMOTE_START";
+    public static final String TYPE_REMOTE_STOP  = "REMOTE_STOP";
+    public static final String TYPE_REMOTE_FRAME = "REMOTE_FRAME";
+    public static final String TYPE_REMOTE_INPUT = "REMOTE_INPUT";
+
     // Các lệnh điều khiển hệ thống cơ bản
     public static final String CMD_LOCK = "LOCK";
     public static final String CMD_LOGOUT = "LOGOUT";
@@ -91,6 +97,22 @@ public class MessagePacket implements Serializable {
 
     public static MessagePacket createError(String sender, String target, String errorDetail) {
         return new MessagePacket(TYPE_ERROR, sender, target, errorDetail);
+    }
+
+    public static MessagePacket createRemoteStart(String target) {
+        return new MessagePacket(TYPE_REMOTE_START, "SERVER", target, "START");
+    }
+
+    public static MessagePacket createRemoteStop(String target) {
+        return new MessagePacket(TYPE_REMOTE_STOP, "SERVER", target, "STOP");
+    }
+
+    public static MessagePacket createRemoteFrame(String sender, String frameJson) {
+        return new MessagePacket(TYPE_REMOTE_FRAME, sender, "SERVER", frameJson);
+    }
+
+    public static MessagePacket createRemoteInput(String target, String inputEventJson) {
+        return new MessagePacket(TYPE_REMOTE_INPUT, "SERVER", target, inputEventJson);
     }
 
     // Getters and Setters
