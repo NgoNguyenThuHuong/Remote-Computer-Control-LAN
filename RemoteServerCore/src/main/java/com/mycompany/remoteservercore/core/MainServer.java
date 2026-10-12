@@ -118,6 +118,20 @@ public class MainServer {
             com.mycompany.remoteservercore.notification.NotificationService.getInstance()
                     .notifyScreenshotCaptured(ip, "Đã nhận ảnh chụp màn hình từ máy trạm");
         });
+
+        // 7. Xử lý luồng khung hình điều khiển từ xa giống UltraViewer (REMOTE_FRAME)
+        router.registerHandler(MessagePacket.TYPE_REMOTE_FRAME, (packet, sender) -> {
+            String ip = (sender != null) ? sender.getClientIp() : packet.getSender();
+            try {
+                com.mycompany.remoteservercore.model.RemoteFrameData frameData = 
+                        JsonUtils.fromJson(packet.getPayload(), com.mycompany.remoteservercore.model.RemoteFrameData.class);
+                if (frameData != null) {
+                    ClientManager.getInstance().notifyRemoteFrameReceived(ip, frameData);
+                }
+            } catch (Exception e) {
+                System.err.println("[MainServer - REMOTE] Lỗi parse RemoteFrameData: " + e.getMessage());
+            }
+        });
     }
 
     /**

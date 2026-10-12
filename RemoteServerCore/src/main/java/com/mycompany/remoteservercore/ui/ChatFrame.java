@@ -256,20 +256,20 @@ public class ChatFrame extends JFrame implements ClientManager.ChatMessageListen
         }
     }
 
-    public void selectClient(String ip) {
-        if (ip == null) {
+    public void selectClient(String identifier) {
+        if (identifier == null) {
             clientComboBox.setSelectedIndex(0);
             return;
         }
         for (int i = 0; i < clientComboBox.getItemCount(); i++) {
             String item = clientComboBox.getItemAt(i);
-            if (item.contains("(" + ip + ")")) {
+            if (item.contains("(" + identifier + ")") || item.startsWith(identifier + " ") || item.contains(identifier)) {
                 clientComboBox.setSelectedIndex(i);
                 return;
             }
         }
         // Nếu client chưa có trong combo (mới kết nối hoặc offline), nạp lại danh sách
-        populateClientList(ip);
+        populateClientList(identifier);
     }
 
     private void onTargetChanged() {
@@ -368,6 +368,12 @@ public class ChatFrame extends JFrame implements ClientManager.ChatMessageListen
             }
 
             appendChatMessage(displayName, payload, time, false);
+            try {
+                Toolkit.getDefaultToolkit().beep();
+            } catch (Exception ignored) {}
+            if (!isVisible()) {
+                setVisible(true);
+            }
             toFront();
         });
     }

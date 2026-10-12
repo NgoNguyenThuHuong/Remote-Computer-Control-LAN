@@ -52,8 +52,10 @@ public class DashboardFrame extends JFrame implements ClientManager.ClientEventL
     private JButton btnRestart;
     private JButton btnShutdown;
     private JButton btnScreenCapture;
+    private JButton btnRemoteControl;
     private JButton btnBlockWeb;
     private JButton btnSendMessage;
+    private JButton btnViewLog;
 
     // ─── Quản lý cửa sổ xem Screenshot theo IP máy trạm ──────────────────────────
     private final java.util.Map<String, ScreenshotViewerFrame> screenshotFrames = new java.util.concurrent.ConcurrentHashMap<>();
@@ -285,7 +287,7 @@ public class DashboardFrame extends JFrame implements ClientManager.ClientEventL
     }
 
     private JPanel buildControlPanel() {
-        JPanel panel = new JPanel(new GridLayout(8, 1, 0, 8));
+        JPanel panel = new JPanel(new GridLayout(10, 1, 0, 8));
         panel.setBackground(new Color(30, 30, 46));
         panel.setPreferredSize(new Dimension(230, 0));
 
@@ -294,32 +296,38 @@ public class DashboardFrame extends JFrame implements ClientManager.ClientEventL
         ctrlLabel.setForeground(new Color(137, 180, 250));
         panel.add(ctrlLabel);
 
-        // Các nút điều khiển theo yêu cầu Issue #34
+        // Các nút điều khiển theo yêu cầu
         btnLock          = createControlButton("🔒  Khóa màn hình (LOCK)", "btnLock");
         btnLogoutClient  = createControlButton("🚪  Đăng xuất (LOGOUT)",    "btnLogoutClient");
         btnRestart       = createControlButton("🔄  Khởi động lại (RESTART)", "btnRestart");
         btnShutdown      = createControlButton("⏻  Tắt máy (SHUTDOWN)",     "btnShutdown");
 
+        btnRemoteControl = createControlButton("🖥️  Điều khiển UltraViewer", "btnRemoteControl");
         btnScreenCapture = createControlButton("📷  Chụp màn hình",        "btnScreenCapture");
         btnBlockWeb      = createControlButton("🚫  Chặn trang web",        "btnBlockWeb");
         btnSendMessage   = createControlButton("💬  Gửi tin nhắn",          "btnSendMessage");
+        btnViewLog       = createControlButton("📋  Nhật ký hoạt động",     "btnViewLog");
 
         // Gắn sự kiện gửi lệnh từ Server UI tới Client
         btnLock.addActionListener(e -> sendCommandToClient(MessagePacket.CMD_LOCK));
         btnLogoutClient.addActionListener(e -> sendCommandToClient(MessagePacket.CMD_LOGOUT));
         btnRestart.addActionListener(e -> sendCommandToClient(MessagePacket.CMD_RESTART));
         btnShutdown.addActionListener(e -> sendCommandToClient(MessagePacket.CMD_SHUTDOWN));
+        btnRemoteControl.addActionListener(e -> startRemoteControlSession());
         btnSendMessage.addActionListener(e -> sendChatMessage());
         btnScreenCapture.addActionListener(e -> requestScreenshotFromClient());
         btnBlockWeb.addActionListener(e -> new BlockedWebFrame().setVisible(true));
+        btnViewLog.addActionListener(e -> new LogFrame().setVisible(true));
 
         panel.add(btnLock);
         panel.add(btnLogoutClient);
         panel.add(btnRestart);
         panel.add(btnShutdown);
+        panel.add(btnRemoteControl);
         panel.add(btnScreenCapture);
         panel.add(btnBlockWeb);
         panel.add(btnSendMessage);
+        panel.add(btnViewLog);
 
         return panel;
     }
@@ -343,9 +351,11 @@ public class DashboardFrame extends JFrame implements ClientManager.ClientEventL
         btnLogoutClient.setEnabled(isAdmin);
         btnRestart.setEnabled(isAdmin);
         btnShutdown.setEnabled(isAdmin);
+        btnRemoteControl.setEnabled(isAdmin);
         btnScreenCapture.setEnabled(isAdmin);
         btnBlockWeb.setEnabled(isAdmin);
         btnSendMessage.setEnabled(isAdmin);
+        btnViewLog.setEnabled(true);
 
         if (!isAdmin) {
             String tooltip = "Chỉ ADMIN mới có quyền gửi lệnh điều khiển hệ thống";
@@ -478,6 +488,33 @@ public class DashboardFrame extends JFrame implements ClientManager.ClientEventL
     }
 
     /**
+     * Mở phiên điều khiển từ xa giống UltraViewer tới Client được chọn.
+     */
+    private void startRemoteControlSession() {
+        int selectedRow = clientTable.getSelectedRow();
+        if (selectedRow < 0) {
+            JOptionPane.showMessageDialog(this,
+                    "Vui lòng chọn một Client trong bảng danh sách trước khi mở Điều khiển từ xa!",
+                    "Chưa chọn Client", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        String targetIp = (String) tableModel.getValueAt(selectedRow, 0);
+        String hostName = (String) tableModel.getValueAt(selectedRow, 1);
+        String status = (String) tableModel.getValueAt(selectedRow, 5);
+
+        if (status != null && status.toUpperCase().contains("OFFLINE")) {
+            JOptionPane.showMessageDialog(this,
+                    "Client [" + hostName + " (" + targetIp + ")] đang OFFLINE!\nKhông thể mở phiên điều khiển từ xa.",
+                    "Client Offline", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        appendLog("🖥️ [ULTRAVIEWER] Mở phiên điều khiển từ xa tới máy trạm: " + hostName + " (" + targetIp + ")");
+        ScreenViewFrame.openSession(targetIp, hostName);
+    }
+
+    /**
      * Yêu cầu chụp màn hình từ Client được chọn trong bảng (Issue 17 / Issue #38).
      */
     private void requestScreenshotFromClient() {
@@ -585,6 +622,15 @@ public class DashboardFrame extends JFrame implements ClientManager.ClientEventL
     public void onChatMessageReceived(MessagePacket packet) {
         SwingUtilities.invokeLater(() -> {
             appendLog("💬 [CHAT từ " + packet.getSender() + "]: " + packet.getPayload());
+            try {
+                Toolkit.getDefaultToolkit().beep();
+            } catch (Exception ignored) {}
+
+            // Tự động mở hoặc kích hoạt cửa sổ ChatFrame với Client gửi tin
+            String sender = packet.getSender();
+            ChatFrame chatFrame = ChatFrame.getInstance(sender);
+            chatFrame.setVisible(true);
+            chatFrame.toFront();
         });
     }
 

@@ -205,10 +205,14 @@ public class ClientChatFrame extends JFrame {
             String time = formatTimestamp(timestamp);
             String displayName = (fromServer != null && !fromServer.isEmpty()) ? fromServer : "Server";
             appendChatMessage(displayName, message, time, false);
+            try {
+                Toolkit.getDefaultToolkit().beep();
+            } catch (Exception ignored) {}
             if (!isVisible()) {
                 setVisible(true);
             }
             toFront();
+            requestFocus();
         });
     }
 
