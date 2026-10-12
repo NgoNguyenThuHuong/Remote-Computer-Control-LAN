@@ -161,8 +161,17 @@ public class ClientAgent {
     }
     
     public static void main(String[] args) {
-        // Default to localhost, port 9999 to match MainServer
-        ClientAgent agent = new ClientAgent("127.0.0.1", 9999);
+        String serverIp = (args.length > 0 && !args[0].isEmpty()) ? args[0] : "127.0.0.1";
+        int port = 9999;
+        if (args.length > 1) {
+            try {
+                port = Integer.parseInt(args[1]);
+            } catch (NumberFormatException e) {
+                System.err.println("Invalid port number, using default: " + port);
+            }
+        }
+        System.out.println("Starting ClientAgent connecting to " + serverIp + ":" + port);
+        ClientAgent agent = new ClientAgent(serverIp, port);
         agent.start();
     }
 }

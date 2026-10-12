@@ -1,8 +1,11 @@
-D:\Remote-Computer-Control-LAN-main (3)\Remote-Computer-Control-LAN-main\server\src\main\java\com\rcc\database\DatabaseTest.java
-D:\Remote-Computer-Control-LAN-main (3)\Remote-Computer-Control-LAN-main\server\src\main\java\com\rcc\model\Log.java
-D:\Remote-Computer-Control-LAN-main (3)\Remote-Computer-Control-LAN-main\server\src\main\java\com\rcc\database\LogDAO.java
-D:\Remote-Computer-Control-LAN-main (3)\Remote-Computer-Control-LAN-main\server\src\main\java\com\rcc\model\User.java
-D:\Remote-Computer-Control-LAN-main (3)\Remote-Computer-Control-LAN-main\server\src\main\java\com\rcc\database\ClientDAO.java
-D:\Remote-Computer-Control-LAN-main (3)\Remote-Computer-Control-LAN-main\server\src\main\java\com\rcc\model\Client.java
-D:\Remote-Computer-Control-LAN-main (3)\Remote-Computer-Control-LAN-main\server\src\main\java\com\rcc\database\DatabaseConnection.java
-D:\Remote-Computer-Control-LAN-main (3)\Remote-Computer-Control-LAN-main\server\src\main\java\com\rcc\database\UserDAO.java
+C:\Users\admin\Documents\NetBeansProjects\Remote-Computer-Control-LAN\server\src\main\java\com\rcc\model\Client.java
+C:\Users\admin\Documents\NetBeansProjects\Remote-Computer-Control-LAN\server\src\main\java\com\rcc\database\DatabaseTest.java
+C:\Users\admin\Documents\NetBeansProjects\Remote-Computer-Control-LAN\server\src\main\java\com\rcc\database\LogDAO.java
+C:\Users\admin\Documents\NetBeansProjects\Remote-Computer-Control-LAN\server\src\main\java\com\rcc\database\UserDAO.java
+C:\Users\admin\Documents\NetBeansProjects\Remote-Computer-Control-LAN\server\src\main\java\com\rcc\protocol\MessageType.java
+C:\Users\admin\Documents\NetBeansProjects\Remote-Computer-Control-LAN\server\src\main\java\com\rcc\protocol\Message.java
+C:\Users\admin\Documents\NetBeansProjects\Remote-Computer-Control-LAN\server\src\main\java\com\rcc\database\DatabaseConnection.java
+C:\Users\admin\Documents\NetBeansProjects\Remote-Computer-Control-LAN\server\src\main\java\com\rcc\database\ClientDAO.java
+C:\Users\admin\Documents\NetBeansProjects\Remote-Computer-Control-LAN\server\src\main\java\com\rcc\protocol\JsonProtocol.java
+C:\Users\admin\Documents\NetBeansProjects\Remote-Computer-Control-LAN\server\src\main\java\com\rcc\model\User.java
+C:\Users\admin\Documents\NetBeansProjects\Remote-Computer-Control-LAN\server\src\main\java\com\rcc\model\Log.java
